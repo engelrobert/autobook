@@ -21,7 +21,7 @@ ALLOWED = {
     "main_event_ids": None,  # options are event ids (filled per scan)
     "scope": ["highlights", "complete"],
     "target_photos": None,
-    "chaptering": ["auto", "place", "day", "event", "theme"],
+    "chaptering": ["auto", "place", "day", "event", "theme", "folder"],
     "title_tone": ["plain", "warm", "playful", "poetic"],
     "language": list(LANGS),
     "focus": ["family", "balanced", "places", "any"],
@@ -216,6 +216,25 @@ def _folder_names(work) -> list[str]:
     return names
 
 
+def offer_folders(qs: list[Question], work, lang: str) -> None:
+    """Photos sorted into folders ("01 Anreise", "02 Strand" …): chapters by those folders, preselected."""
+    from autobook.catalog import Catalog
+    from autobook.cluster.folders import folder_groups
+
+    cat = Catalog(work.catalog)
+    try:
+        groups = folder_groups(cat.joined(), cat.kv_get("roots", []))
+    finally:
+        cat.close()
+    q = next((q for q in qs if q.maps_to == "chaptering"), None)
+    if not groups or q is None:
+        return
+    names = ", ".join(g["label"] for g in groups[:3]) + (" …" if len(groups) > 3 else "")
+    q.options = [Option(value="folder", label=tr(lang, "chapters.folder", names=names)),
+                 *[o for o in q.options if o.value != "folder"]]
+    q.default = "folder"
+
+
 def build_questions(summary: dict, work=None, ai=None, ui_language: str = "en") -> list[Question]:
     """Favourite questions (if marks were found) + AI-tailored or default questions."""
     import re
@@ -226,6 +245,8 @@ def build_questions(summary: dict, work=None, ai=None, ui_language: str = "en") 
     folders = folder_name_counts(work) if (cands and work is not None) else []
     fav = favourite_questions(summary, check_markers(ai, cands, folders), ui_language)
     rest = ai_questions(ai, work, summary, ui_language) if ai is not None else default_questions(summary, ui_language)
+    if work is not None:
+        offer_folders(rest, work, ui_language)
     lang = guess_language(_folder_names(work)) if work is not None else None
     for q in rest:  # the folder names know the family's language better than the interface setting
         if q.maps_to == "language" and lang and any(o.value == lang for o in q.options):

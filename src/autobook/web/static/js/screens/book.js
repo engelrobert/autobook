@@ -163,7 +163,9 @@ function render(B, pages) {
         s.right ? pageEl(s.right) : el("div", { class: "pg inside", style: `aspect-ratio:${pageAr}` })));
     caption.textContent = label(s);
     strip.querySelectorAll(".mini").forEach((m, j) => m.classList.toggle("on", j === idx));
-    strip.children[idx]?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+    const m = strip.children[idx];  // only the strip scrolls sideways; the page itself stays where it is
+    if (m) strip.scrollTo({ behavior: "smooth", left: strip.scrollLeft + m.getBoundingClientRect().left -
+      strip.getBoundingClientRect().left - (strip.clientWidth - m.offsetWidth) / 2 });
   }
 
   strip.replaceChildren(...spreads.map((s, i) => el("button", { class: "mini", "aria-label": label(s), onclick: () => go(i) },

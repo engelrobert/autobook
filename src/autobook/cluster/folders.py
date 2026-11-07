@@ -72,3 +72,50 @@ def clean_label(name: str) -> str | None:
     s = ORDINAL_PREFIX.sub("", s)
     s = DATE_SUFFIX.sub("", s)
     return s.strip(" -_,") or None
+
+
+# ── chapters from the folders people sorted their photos into ───────────────────────────────
+FOLDER_SHARE = 0.8  # at least this share of the photos must be in folders for them to count as chapters
+
+
+def chapter_folder(path: str, roots: list[str]) -> str | None:
+    """The folder directly below the scan root that a photo belongs to; deeper folders belong to it.
+    Camera and favourite folders don't count ("DCIM/Strand/x.jpg" and "Strand/Favoriten/x.jpg" are
+    both "Strand"). None for a photo lying in the root itself."""
+    p = Path(path)
+    for root in sorted(roots, key=len, reverse=True):
+        try:
+            rel = p.parent.relative_to(Path(root))
+        except ValueError:
+            continue
+        return next((x for x in rel.parts if x and not GENERIC.match(x.strip())), None)
+    return None
+
+
+def _natural(name: str) -> list:
+    return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", name)]
+
+
+def folder_order(first_taken: dict[str, str]) -> list[str]:
+    """Folder names in book order: as named when they are all numbered or dated ("01 Anreise",
+    "2026-05-03 …"), else by their first photo."""
+    names = list(first_taken)
+    if all(ORDINAL_PREFIX.match(n) or DATE_PREFIX.match(n) for n in names):
+        return sorted(names, key=_natural)
+    return sorted(names, key=lambda n: (first_taken[n], _natural(n)))
+
+
+def folder_groups(photos: list[dict], roots: list[str]) -> list[dict]:
+    """The folders as chapters: [{folder, label, n}] in book order, or [] when the photos are not
+    sorted into folders (fewer than two, or less than FOLDER_SHARE of the photos in them)."""
+    counts: Counter[str] = Counter()
+    first: dict[str, str] = {}
+    for p in photos:
+        f = chapter_folder(p["path"], roots)
+        if f is None:
+            continue
+        counts[f] += 1
+        first[f] = min(first.get(f, p["taken"]), p["taken"])
+    if len(counts) < 2 or sum(counts.values()) < FOLDER_SHARE * len(photos):
+        return []
+    return [{"folder": f, "label": clean_label(f) or f, "n": counts[f]} for f in folder_order(first)]

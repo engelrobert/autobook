@@ -303,6 +303,9 @@ input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--accent); }
 .edit-input { font-family: var(--serif); font-weight: 600; width: min(36ch, 100%); }
 .edit-input.h1 { font-size: 40px; min-height: 60px; }
 .edit-input.h2 { font-size: 30px; min-height: 52px; }
+.editable.subtitle .edit-text { font: italic 400 19px/1.4 var(--serif); color: #4A433C; }
+.editable.subtitle .edit-text.placeholder { font-style: normal; font-family: var(--sans); font-size: 15px; color: var(--pencil); }
+.edit-input.p { font-style: italic; font-weight: 400; font-size: 19px; min-height: 44px; }
 .cover-card { display: flex; gap: 32px; align-items: center; flex-wrap: wrap; }
 .cover-big { width: 320px; max-width: 100%; display: flex; justify-content: center; --cover-h: 220px; }
 .cover-big .cover-mock { max-height: 300px; }

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,6 +14,12 @@ from platformdirs import user_cache_dir
 APP = "autobook"
 KEYRING_SERVICE = "autobook"
 KEYRING_USER = "openai_api_key"
+
+
+def no_window() -> dict:
+    """subprocess options so that a console program started by the windowed autobook.exe does not
+    open a console window of its own (one per Fotobuch call during a layout)."""
+    return {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
 
 
 def cache_dir() -> Path:

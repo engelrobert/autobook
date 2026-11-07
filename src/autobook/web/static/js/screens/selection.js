@@ -56,20 +56,22 @@ function focusPhoto(id) {
   setTimeout(() => e.classList.remove("flash"), 2400);
 }
 
-// A title that turns into a text field when you click it (or its pencil).
-export function editable(text, onSave, tag, label) {
-  const box = el("div", { class: "editable" });
+// A title that turns into a text field when you click it (or its pencil). A subtitle may be empty:
+// then it shows the placeholder, and saving an empty field clears it.
+export function editable(text, onSave, tag, label, { allowEmpty = false, placeholder = "", cls = "" } = {}) {
+  const box = el("div", { class: "editable" + (cls ? ` ${cls}` : "") });
   const view = () => box.replaceChildren(
-    el(tag, { class: "edit-text", tabindex: "0", onclick: edit, onkeydown: e => { if (e.key === "Enter") edit(); } }, text),
+    el(tag, { class: "edit-text" + (text ? "" : " placeholder"), tabindex: "0", onclick: edit,
+      onkeydown: e => { if (e.key === "Enter") edit(); } }, text || placeholder),
     el("button", { class: "icon-btn quiet", "aria-label": label, onclick: edit }, icon("pencil", 20, { width: 1.8 })));
   function edit() {
-    const input = el("input", { type: "text", value: text, class: `edit-input ${tag}`, "aria-label": label });
+    const input = el("input", { type: "text", value: text || "", placeholder, class: `edit-input ${tag}`, "aria-label": label });
     let done = false;
     const commit = () => {
       if (done) return;
       done = true;
       const v = input.value.trim();
-      if (v && v !== text) onSave(v); else view();
+      if ((v || allowEmpty) && v !== (text || "")) onSave(v); else view();
     };
     input.addEventListener("keydown", e => {
       if (e.key === "Enter") commit();
@@ -92,6 +94,8 @@ function draw(B) {
     el("div", { class: "sel-head" },
       el("div", { class: "col" },
         editable(plan.book.title, v => P.change(t("done.title"), p => { p.book.title = v; }), "h1", t("sel.editTitle")),
+        editable(plan.book.subtitle, v => P.change(t("done.subtitle"), p => { p.book.subtitle = v; }), "p",
+          t("sel.editBookSubtitle"), { allowEmpty: true, placeholder: t("sel.addSubtitle"), cls: "subtitle" }),
         el("span", { class: "muted" }, t("sel.stats", { n: total, c: t("sel.chapterCount", { n: plan.chapters.length }), p: pages }))),
       el("div", { class: "row" }, statusEl,
         el("a", { class: "btn primary big", href: bookUrl(B.name, "book") }, t("sel.next"), icon("next", 22)))),
@@ -146,6 +150,8 @@ function chapterSection(B, c) {
     el("div", { class: "ch-head" },
       el("div", { class: "col" },
         editable(c.title, v => P.change(t("done.title"), p => { P.chapterById(p, c.id).title = v; }), "h2", t("sel.editChapter")),
+        editable(c.subtitle, v => P.change(t("done.subtitle"), p => { P.chapterById(p, c.id).subtitle = v; }), "p",
+          t("sel.editSubtitle"), { allowEmpty: true, placeholder: t("sel.addSubtitle"), cls: "subtitle" }),
         el("div", { class: "row tight" }, el("span", { class: "muted" }, chapterDates(c)),
           el("span", { class: "stepper", role: "group", "aria-label": t("count.chapter") },
             el("button", { class: "step-btn", "aria-label": t("count.chapterFewer"), disabled: c.photos.length <= 1,

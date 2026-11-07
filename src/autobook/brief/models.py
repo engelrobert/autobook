@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Chaptering = Literal["auto", "place", "day", "event", "theme"]
+Chaptering = Literal["auto", "place", "day", "event", "theme", "folder"]
 Scope = Literal["highlights", "complete"]
 Tone = Literal["plain", "warm", "playful", "poetic"]
 

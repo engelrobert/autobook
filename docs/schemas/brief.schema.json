@@ -114,7 +114,8 @@
         "place",
         "day",
         "event",
-        "theme"
+        "theme",
+        "folder"
       ],
       "title": "Chaptering",
       "type": "string"

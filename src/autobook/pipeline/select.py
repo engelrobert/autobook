@@ -4,12 +4,18 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable
-from datetime import date
+from datetime import date, datetime
 
 from autobook.brief.models import Brief
 from autobook.catalog import Catalog
 from autobook.cluster.chapters import make_chapters
-from autobook.cluster.folders import dominant_label, folder_hints
+from autobook.cluster.folders import (
+    chapter_folder,
+    clean_label,
+    dominant_label,
+    folder_hints,
+    folder_order,
+)
 from autobook.cluster.places import country_name
 from autobook.discover.favourites import level as fav_level
 from autobook.export.profile import load_profile
@@ -134,6 +140,32 @@ def theme_chapters(photos: list[dict], min_photos: int = 8) -> list[dict]:
     return out
 
 
+def folder_chapters(photos: list[dict], roots: list[str]) -> list[dict]:
+    """Chapters by the folders the photos were sorted into (the first level below the scan root),
+    in folder_order and never merged: the folders are the person's own structure. Photos lying in
+    the root itself join the folder chapter closest in time."""
+    groups: dict[str, list[dict]] = {}
+    loose = []
+    for p in photos:
+        f = chapter_folder(p["path"], roots)
+        (groups.setdefault(f, []) if f else loose).append(p)
+    if not groups:
+        return []
+    secs = lambda ts: datetime.fromisoformat(ts.replace("Z", "+00:00")[:19]).timestamp()
+    spans = {f: (min(secs(p["taken"]) for p in ps), max(secs(p["taken"]) for p in ps)) for f, ps in groups.items()}
+    for p in loose:
+        t = secs(p["taken"])
+        groups[min(spans, key=lambda f: max(spans[f][0] - t, t - spans[f][1], 0))].append(p)
+    out = []
+    for i, f in enumerate(folder_order({f: min(p["taken"] for p in ps) for f, ps in groups.items()})):
+        ps = sorted(groups[f], key=lambda p: p["taken"])
+        out.append({"id": f"ch_{i + 1:02d}", "folder": f, "label": clean_label(f) or f,
+                    "photo_ids": [p["id"] for p in ps], "event_ids": list(dict.fromkeys(p["event_id"] for p in ps)),
+                    "start": ps[0]["taken"], "end": ps[-1]["taken"], "n": len(ps),
+                    "place": None, "country": None, "mode": "folder"})
+    return out
+
+
 def offline_book_title(chapters: list[dict], date_from: str, language: str) -> str:
     countries = [c["country"] for c in chapters if c.get("country")]
     year = date_from[:4]
@@ -207,11 +239,15 @@ def _build(cat: Catalog, work: Work, brief: Brief, ai, profile: str, batch, prog
 
     # 2. chapters
     ev_list = [e for e in events.values() if e["id"] not in excluded]
+    by_folder = brief.chaptering == "folder" and bool(chapters := folder_chapters(pool, roots))
     if brief.chaptering == "theme" and ai_scores:
         chapters = theme_chapters(pool)
         ch_photos = {c["id"]: [by_id[i] for i in c["photo_ids"]] for c in chapters}
-    else:
-        chapters = make_chapters(ev_list, brief.chaptering, max_chapters=brief.max_chapters)
+    elif by_folder:
+        ch_photos = {c["id"]: [by_id[i] for i in c["photo_ids"]] for c in chapters}
+    else:  # (no folders after all: chapters as "auto" would make them)
+        chapters = make_chapters(ev_list, "auto" if brief.chaptering == "folder" else brief.chaptering,
+                                 max_chapters=brief.max_chapters)
         ch_photos = {c["id"]: [p for p in pool if p["event_id"] in set(c["event_ids"])] for c in chapters}
 
     # 3. quotas: never fewer than the chapter's favourites (the must-haves; in "best" mode they are
@@ -319,6 +355,8 @@ def _build(cat: Catalog, work: Work, brief: Brief, ai, profile: str, batch, prog
             plan_chapters[-1].title = ch_label
         if c.get("theme"):
             plan_chapters[-1].title = c["theme"].capitalize()
+        if c.get("label"):  # chapters by folder: the folder's name
+            plan_chapters[-1].title = c["label"]
         folders_of[cid] = folder_hints([p["path"] for p in ch_photos[cid]], roots)
     if not plan_chapters:
         raise RuntimeError("nothing to put in the book (no favourites found for the chosen marks?)")
@@ -339,8 +377,8 @@ def _build(cat: Catalog, work: Work, brief: Brief, ai, profile: str, batch, prog
                                 subtitles=brief.subtitles)
         for c in plan_chapters:
             t = titles.get(c.id)
-            if t:
-                c.title, c.subtitle = t["title"] or c.title, t.get("subtitle", "")
+            if t:  # chapters by folder keep the folder's name; the AI may still add a subtitle
+                c.title, c.subtitle = (c.title if by_folder else t["title"] or c.title), t.get("subtitle", "")
     # cover: favourites first (best level), never a full-page chapter opener; taken off the inner pages
     # below so it is not shown twice. Candidates that fit the front panel come first.
     cover_cands = cover_candidates(selected_all or set(hero_ids), by_id, prof)
@@ -390,7 +428,7 @@ def _build(cat: Catalog, work: Work, brief: Brief, ai, profile: str, batch, prog
 
         try:
             find_focus(ai, work, book_photo_ids(plan), batch=batch)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             plan.warnings.append(f"focus points: {e}")
         plan.warnings[:0] = ai.error_summary()
     return plan

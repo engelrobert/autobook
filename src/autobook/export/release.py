@@ -19,7 +19,7 @@ from autobook.export.fotobuch import PROJECT, Fotobuch
 from autobook.export.profile import Profile, load_profile
 from autobook.export.shrink import TooLarge, fit
 from autobook.plan.models import BookPlan, CoverSize
-from autobook.settings import Work
+from autobook.settings import Work, no_window
 
 MM = 72 / 25.4
 DPI_LINE = re.compile(r"Page (\d+): (\S+) — (\d+) DPI")
@@ -113,7 +113,7 @@ def _min_ppi(pdf: Path) -> tuple[int | None, str]:
     exe = shutil.which("pdfimages")
     if not exe:
         return None, "pdfimages (poppler) not installed; relying on Fotobuch's DPI warnings"
-    out = subprocess.run([exe, "-list", str(pdf)], capture_output=True, text=True).stdout
+    out = subprocess.run([exe, "-list", str(pdf)], capture_output=True, text=True, **no_window()).stdout
     ppis = []
     for line in out.splitlines()[2:]:
         parts = line.split()

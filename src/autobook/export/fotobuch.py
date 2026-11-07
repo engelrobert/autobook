@@ -39,7 +39,7 @@ from autobook.export.style import FRAME_MM, OPENER_PREFIX, paint, rgb
 from autobook.i18n import format_range
 from autobook.plan.models import BookPlan, Chapter, PlanPhoto
 from autobook.render.pages import COVER_SCRIM, OPENER_SHADE, hero_crop, page_pixels, plain_background, spread_halves
-from autobook.settings import Work, fotobuch_bin
+from autobook.settings import Work, fotobuch_bin, no_window
 from autobook.thumbs import open_upright
 
 PROJECT = "book"
@@ -75,7 +75,7 @@ class Fotobuch:
     def run(self, args: list[str], cwd: Path) -> str:
         env = {**os.environ, "NO_COLOR": "1", "RUST_LOG": os.environ.get("RUST_LOG", "info")}
         p = subprocess.run([self.bin, *map(str, args)], cwd=str(cwd), capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", env=env)
+                           encoding="utf-8", errors="replace", env=env, **no_window())
         out = ANSI.sub("", (p.stdout or "") + (p.stderr or ""))
         if p.returncode != 0:
             tail = "\n".join(out.strip().splitlines()[-25:])

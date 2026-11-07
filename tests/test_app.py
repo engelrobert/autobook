@@ -148,3 +148,25 @@ def test_the_app_starts_without_a_console(tmp_path, monkeypatch):
     app.console_streams()  # and anything else that writes to them gets somewhere to go
     assert sys.stdout.write("x") == 1 and sys.stderr.isatty() in (True, False)  # "nul" is a tty on Windows
     make_server(tmp_path / "lib", "tok", free_port())  # even uvicorn's console logging works then
+
+
+def test_fotobuch_runs_without_a_console_window(tmp_path, monkeypatch):
+    """On Windows every Fotobuch call from the windowed app opened a console window."""
+    import subprocess
+    import sys
+
+    from autobook.export.fotobuch import Fotobuch
+
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen.update(kw)
+        return SimpleNamespace(returncode=0, stdout="fotobuch 0.3.0", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    Fotobuch(binary="fotobuch").run(["--version"], tmp_path)
+    assert "creationflags" not in seen  # elsewhere nothing changes
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    Fotobuch(binary="fotobuch.exe").run(["--version"], tmp_path)
+    assert seen["creationflags"] == 0x08000000

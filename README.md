@@ -47,10 +47,14 @@ It speaks German and English (switch at the top right; a new language is one mor
 2. **Wishes**: what was found, then the questions as large cards (favourites, book shape, how thick, chapters,
    focus, title tone, language). The book's language is suggested from your folder names. More settings
    (photos per page, subtitles, AI on/off and thoroughness) are folded away. *Make my book* shows the AI's
-   time and cost first; the run can be left and picked up again.
+   time and cost first; the run can be left and picked up again. If you sorted the photos into folders
+   ("01 Anreise", "02 Strand" …), *Nach deinen Ordnern* is preselected: one chapter per folder directly
+   inside the chosen folder, named after it, in the folders' order when they are numbered or dated
+   (else by date). Favourite and camera folders inside them don't count as chapters.
 3. **Selection**: the chosen photos per chapter in their own shape. Click one to see it large (← →, Esc) and
    make it bigger, use it as chapter photo or cover, move it, take it out, or swap it for another shot of
-   the same moment. Titles change by clicking them; the cover is chosen from candidates. Everything is saved
+   the same moment. Titles and subtitles (of the book and each chapter) change by clicking them; the
+   cover is chosen from candidates. Everything is saved
    by itself, and every change can be undone.
    - **Fotos im Buch**: one slider for the whole book. While you drag, you see which photos would leave
      (dimmed) and which would come in ("neu"), with the page count; letting go applies it. Ticks mark counts

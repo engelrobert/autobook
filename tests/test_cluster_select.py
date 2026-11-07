@@ -80,3 +80,63 @@ def test_date_ranges_in_languages():
     assert format_range(a, b, "de") == "1.–14. Juli 2026"
     assert format_range(date(2026, 6, 30), date(2026, 7, 2), "en") == "30 June – 2 July 2026"
     assert format_range(a, a, "fr") == "1 juillet 2026"
+
+
+def test_folders_people_sorted_their_photos_into():
+    from autobook.cluster.folders import folder_groups
+    from autobook.pipeline.select import folder_chapters
+
+    root = "/trip/Urlaub"
+    t0 = datetime(2026, 7, 1, 9)
+
+    def ph(i, folder, hours):
+        path = f"{root}/{folder}/IMG_{i}.jpg" if folder else f"{root}/IMG_{i}.jpg"
+        return {"id": f"p{i:03d}", "path": path, "taken": (t0 + timedelta(hours=hours)).isoformat(), "event_id": "e1"}
+
+    ps = [ph(1, "10 Heimweg", 50), ph(2, "2 Strand", 20), ph(3, "2 Strand/Favoriten", 21),
+          ph(4, "DCIM/1 Anreise", 1), ph(5, "1 Anreise", 2), ph(6, "", 22)]  # 6 lies in the root, during the beach
+    groups = folder_groups(ps, [root])
+    assert [(g["label"], g["n"]) for g in groups] == [("Anreise", 2), ("Strand", 2), ("Heimweg", 1)]  # numbered order
+    chs = folder_chapters(ps, [root])
+    assert [c["label"] for c in chs] == ["Anreise", "Strand", "Heimweg"]
+    assert chs[1]["photo_ids"] == ["p002", "p003", "p006"]  # the loose photo joins the chapter of its time
+    # names without numbers: the order of the photos
+    plain = [ph(1, "Strand", 20), ph(2, "Anreise", 1), ph(3, "Berge", 30)]
+    assert [c["label"] for c in folder_chapters(plain, [root])] == ["Anreise", "Strand", "Berge"]
+    # not sorted into folders: one folder, or most photos loose, or only camera folders
+    assert folder_groups([ph(1, "Strand", 1), ph(2, "Strand", 2)], [root]) == []
+    assert folder_groups([ph(1, "A", 1), ph(2, "B", 2), *[ph(10 + i, "", 3) for i in range(3)]], [root]) == []
+    assert folder_groups([ph(1, "DCIM/100CANON", 1), ph(2, "Favoriten", 2)], [root]) == []
+
+
+def test_chapters_by_folder_from_scan_to_plan(trip, tmp_path):
+    """A trip sorted into "01 Lissabon", "02 Porto", "03 Lagos": offered and preselected, chapters
+    in that order with the folder names, favourite folders and loose photos taken along."""
+    import shutil
+
+    from autobook.brief.models import Brief
+    from autobook.brief.questions import build_questions
+    from autobook.pipeline.scan import run_scan
+    from autobook.pipeline.select import build_plan
+    from autobook.settings import Work
+
+    root = tmp_path / "Portugal"
+    folders = {38.7: "01 Lissabon", 41.1: "02 Porto", 37.1: "03 Lagos"}
+    porto_favs = 0
+    for p in trip[1]:
+        if p.lat is None:  # no EXIF: lies loose in the main folder
+            dst = root / p.path.name
+        else:
+            folder = folders[min(folders, key=lambda lat: abs(lat - p.lat))]
+            if folder == "02 Porto" and porto_favs < 3:
+                folder, porto_favs = folder + "/Favoriten", porto_favs + 1
+            dst = root / folder / p.path.name
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(p.path, dst)
+    work = Work(tmp_path / "work")
+    summary = run_scan([root], work)
+    q = next(q for q in build_questions(summary, work, None, "de") if q.maps_to == "chaptering")
+    assert q.default == "folder" and q.options[0].label == "Nach deinen Ordnern (Lissabon, Porto, Lagos)"
+    plan = build_plan(work, Brief(chaptering="folder", target_photos=24, language="de"))
+    assert [c.title for c in plan.chapters] == ["Lissabon", "Porto", "Lagos"]
+    assert plan.chapters[0].date_from < plan.chapters[1].date_from < plan.chapters[2].date_from
