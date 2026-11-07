@@ -93,8 +93,9 @@ jobs:
           # the latest published release, so the installed apps get a small delta update
           vpk download github --repoUrl "https://github.com/${{ github.repository }}" --token $env:GH_TOKEN --outputDir releases
           if ($LASTEXITCODE) { Write-Host "no earlier release to build a delta from" }
+          # win-x64: Python and fotobuch.exe are 64-bit (vpk would assume x86)
           vpk pack --packId autobook --packVersion $env:VERSION --packDir dist/autobook --mainExe autobook.exe `
-            --packTitle autobook --icon packaging/windows/autobook.ico --outputDir releases
+            --packTitle autobook --icon packaging/windows/autobook.ico --runtime win-x64 --outputDir releases
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           Get-ChildItem releases | Format-Table Name, Length
 
