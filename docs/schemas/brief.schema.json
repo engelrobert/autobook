@@ -1,0 +1,183 @@
+{
+  "$defs": {
+    "QA": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "question": {
+          "title": "Question",
+          "type": "string"
+        },
+        "answer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Answer"
+        }
+      },
+      "required": [
+        "id",
+        "question"
+      ],
+      "title": "QA",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "schema": {
+      "const": "autobook.brief/1",
+      "default": "autobook.brief/1",
+      "title": "Schema",
+      "type": "string"
+    },
+    "created": {
+      "title": "Created",
+      "type": "string"
+    },
+    "qa": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/QA"
+      },
+      "title": "Qa",
+      "type": "array"
+    },
+    "main_event_ids": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Main Event Ids",
+      "type": "array"
+    },
+    "excluded_event_ids": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Excluded Event Ids",
+      "type": "array"
+    },
+    "scope": {
+      "default": "highlights",
+      "enum": [
+        "highlights",
+        "complete"
+      ],
+      "title": "Scope",
+      "type": "string"
+    },
+    "target_photos": {
+      "default": 200,
+      "title": "Target Photos",
+      "type": "integer"
+    },
+    "target_pages": {
+      "default": 70,
+      "title": "Target Pages",
+      "type": "integer"
+    },
+    "photos_per_page": {
+      "default": 4.5,
+      "title": "Photos Per Page",
+      "type": "number"
+    },
+    "chaptering": {
+      "default": "auto",
+      "enum": [
+        "auto",
+        "place",
+        "day",
+        "event",
+        "theme"
+      ],
+      "title": "Chaptering",
+      "type": "string"
+    },
+    "max_chapters": {
+      "default": 10,
+      "title": "Max Chapters",
+      "type": "integer"
+    },
+    "title_tone": {
+      "default": "warm",
+      "enum": [
+        "plain",
+        "warm",
+        "playful",
+        "poetic"
+      ],
+      "title": "Title Tone",
+      "type": "string"
+    },
+    "language": {
+      "default": "en",
+      "title": "Language",
+      "type": "string"
+    },
+    "book_title": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Book Title"
+    },
+    "priorities": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Priorities",
+      "type": "array"
+    },
+    "people_share": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": 0.8,
+      "title": "People Share"
+    },
+    "subtitles": {
+      "default": false,
+      "title": "Subtitles",
+      "type": "boolean"
+    },
+    "notes": {
+      "default": "",
+      "title": "Notes",
+      "type": "string"
+    }
+  },
+  "title": "Brief",
+  "type": "object"
+}

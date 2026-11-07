@@ -1,0 +1,417 @@
+{
+  "$defs": {
+    "BookMeta": {
+      "properties": {
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "subtitle": {
+          "default": "",
+          "title": "Subtitle",
+          "type": "string"
+        },
+        "date_from": {
+          "title": "Date From",
+          "type": "string"
+        },
+        "date_to": {
+          "title": "Date To",
+          "type": "string"
+        },
+        "language": {
+          "default": "en",
+          "title": "Language",
+          "type": "string"
+        },
+        "cover_photo": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cover Photo"
+        },
+        "back_photo": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Back Photo"
+        },
+        "profile": {
+          "default": "square-21",
+          "title": "Profile",
+          "type": "string"
+        },
+        "photos_per_page": {
+          "default": 4.5,
+          "title": "Photos Per Page",
+          "type": "number"
+        }
+      },
+      "required": [
+        "title",
+        "date_from",
+        "date_to"
+      ],
+      "title": "BookMeta",
+      "type": "object"
+    },
+    "Chapter": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "subtitle": {
+          "default": "",
+          "title": "Subtitle",
+          "type": "string"
+        },
+        "date_from": {
+          "title": "Date From",
+          "type": "string"
+        },
+        "date_to": {
+          "title": "Date To",
+          "type": "string"
+        },
+        "place": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Place"
+        },
+        "country": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Country"
+        },
+        "event_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Event Ids",
+          "type": "array"
+        },
+        "divider": {
+          "$ref": "#/$defs/Divider",
+          "default": {
+            "style": "hero",
+            "photo": null
+          }
+        },
+        "photos": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlanPhoto"
+          },
+          "title": "Photos",
+          "type": "array"
+        },
+        "alternatives": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Alternatives",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "date_from",
+        "date_to"
+      ],
+      "title": "Chapter",
+      "type": "object"
+    },
+    "Divider": {
+      "properties": {
+        "style": {
+          "default": "hero",
+          "enum": [
+            "hero",
+            "plain"
+          ],
+          "title": "Style",
+          "type": "string"
+        },
+        "photo": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Photo"
+        }
+      },
+      "title": "Divider",
+      "type": "object"
+    },
+    "PlanPhoto": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "ts": {
+          "title": "Ts",
+          "type": "string"
+        },
+        "ts_source": {
+          "default": "exif",
+          "enum": [
+            "exif",
+            "mtime"
+          ],
+          "title": "Ts Source",
+          "type": "string"
+        },
+        "gps": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gps"
+        },
+        "width": {
+          "default": 0,
+          "title": "Width",
+          "type": "integer"
+        },
+        "height": {
+          "default": 0,
+          "title": "Height",
+          "type": "integer"
+        },
+        "weight": {
+          "default": 1.0,
+          "title": "Weight",
+          "type": "number"
+        },
+        "strong": {
+          "default": false,
+          "title": "Strong",
+          "type": "boolean"
+        },
+        "scores": {
+          "$ref": "#/$defs/Scores",
+          "default": {
+            "local": null,
+            "tech": null,
+            "aesthetic": null,
+            "interest": null,
+            "final": 0.0
+          }
+        },
+        "reason": {
+          "default": "",
+          "title": "Reason",
+          "type": "string"
+        },
+        "dup_group": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dup Group"
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "ts"
+      ],
+      "title": "PlanPhoto",
+      "type": "object"
+    },
+    "Rejected": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "reason"
+      ],
+      "title": "Rejected",
+      "type": "object"
+    },
+    "Scores": {
+      "properties": {
+        "local": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Local"
+        },
+        "tech": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tech"
+        },
+        "aesthetic": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aesthetic"
+        },
+        "interest": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Interest"
+        },
+        "final": {
+          "default": 0.0,
+          "title": "Final",
+          "type": "number"
+        }
+      },
+      "title": "Scores",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "schema": {
+      "const": "autobook.plan/1",
+      "default": "autobook.plan/1",
+      "title": "Schema",
+      "type": "string"
+    },
+    "created": {
+      "title": "Created",
+      "type": "string"
+    },
+    "selection": {
+      "default": "local",
+      "enum": [
+        "local",
+        "ai"
+      ],
+      "title": "Selection",
+      "type": "string"
+    },
+    "book": {
+      "$ref": "#/$defs/BookMeta"
+    },
+    "chapters": {
+      "items": {
+        "$ref": "#/$defs/Chapter"
+      },
+      "title": "Chapters",
+      "type": "array"
+    },
+    "rejected": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Rejected"
+      },
+      "title": "Rejected",
+      "type": "array"
+    },
+    "warnings": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "book",
+    "chapters"
+  ],
+  "title": "BookPlan",
+  "type": "object"
+}

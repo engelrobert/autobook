@@ -1,0 +1,55 @@
+[project]
+name = "autobook"
+license = "AGPL-3.0-or-later"
+version = "0.2.0"
+description = "AI-assisted photo book builder on top of Fotobuch"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "blake3>=1.0",
+    "fastapi>=0.115",
+    "imagehash>=4.3",
+    "keyring>=25",
+    "numpy>=2.0",
+    "openai>=3.41.0",
+    "pillow>=11.0",
+    "pillow-heif>=0.20",
+    "platformdirs>=4.3",
+    "pydantic>=2.9",
+    "pypdf>=5.0",
+    "pypdfium2>=5.14.0",
+    "reverse-geocoder>=1.5",
+    "ruamel.yaml>=0.18",
+    "typer>=0.12",
+    "uvicorn>=0.32",
+    # the Windows app: icon next to the clock, installer and updates (packaging/windows)
+    "pystray>=0.19; sys_platform == 'win32'",
+    "velopack>=0.0.1298; sys_platform == 'win32'",
+]
+
+[project.scripts]
+autobook = "autobook.cli:main"
+
+[project.gui-scripts]
+autobook-app = "autobook.app:main"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.27",
+    "pytest>=8.3",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/autobook"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "live: calls the real OpenAI API (costs money, never run in CI)",
+    "fotobuch: needs the fotobuch binary on PATH or FOTOBUCH_BIN",
+]
+addopts = "-m 'not live'"

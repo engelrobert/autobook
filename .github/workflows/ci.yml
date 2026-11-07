@@ -1,0 +1,47 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      FOTOBUCH_VERSION: v0.3.0
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install fotobuch (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          curl -sSLO https://github.com/EddyXorb/fotobuch/releases/download/$FOTOBUCH_VERSION/fotobuch-linux-x86_64.tar.gz
+          curl -sSLO https://github.com/EddyXorb/fotobuch/releases/download/$FOTOBUCH_VERSION/fotobuch-linux-x86_64.tar.gz.sha256
+          sha256sum -c fotobuch-linux-x86_64.tar.gz.sha256
+          mkdir -p "$HOME/fotobuch" && tar xzf fotobuch-linux-x86_64.tar.gz -C "$HOME/fotobuch"
+          echo "FOTOBUCH_BIN=$HOME/fotobuch/fotobuch" >> "$GITHUB_ENV"
+          sudo apt-get install -y poppler-utils
+
+      - name: Install fotobuch (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./packaging/windows/get_fotobuch.ps1 -Dest "$env:USERPROFILE\fotobuch" -Version $env:FOTOBUCH_VERSION
+          "FOTOBUCH_BIN=$env:USERPROFILE\fotobuch\fotobuch.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Tests
+        run: uv run --python 3.12 pytest -q
+
+      - name: CLI smoke test
+        run: |
+          uv run autobook doctor
+          uv run autobook demo-photos demo --scale 0.4 --long-edge 1200
+          uv run autobook all demo --work book --offline
+          uv run autobook release --work book

@@ -1,0 +1,20 @@
+autobook — photo books from your photo folders
+Copyright (C) 2026 Robert Engel
+
+This program is free software: you can redistribute it and/or modify it under the terms of the
+GNU Affero General Public License as published by the Free Software Foundation, either version 3
+of the License, or (at your option) any later version (see LICENSE). It comes without any warranty.
+
+Parts that come from others:
+
+- Fotobuch (https://github.com/EddyXorb/fotobuch), GNU AGPL v3. The Windows app ships the
+  unchanged fotobuch.exe of the version named in packaging/windows/get_fotobuch.ps1, with a note
+  where its source code is (fotobuch/SOURCE-fotobuch.txt in the installed app).
+  src/autobook/resources/autobook.typ is Fotobuch's page template with autobook's additions
+  (tools/make_template.py); src/autobook/resources/fotobuch-upstream-v0.3.0.typ is the original.
+- GeoNames city data (cities1000) through reverse_geocoder, Creative Commons Attribution 4.0,
+  https://www.geonames.org/
+- Newsreader and Inter fonts, SIL Open Font License 1.1
+  (src/autobook/web/static/fonts/OFL-newsreader.txt, OFL-inter.txt).
+- The Python libraries the app is built from keep their own licenses (see their package metadata
+  in the installed app's _internal folder).

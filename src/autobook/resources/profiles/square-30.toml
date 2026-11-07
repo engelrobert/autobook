@@ -1,0 +1,23 @@
+description = "Square 30 x 30 cm hardcover. Generic defaults: check every value against your printer's spec sheet."
+page_width_mm = 300
+page_height_mm = 300
+bleed_mm = 3
+margin_mm = 0
+gap_mm = 5
+dpi = 300
+photos_per_page_max = 6
+
+[cover]
+enabled = true
+mode = "front-full"
+front_back_width_mm = 606
+height_mm = 306
+bleed_mm = 3
+spine_mm_per_10_pages = 1.0
+
+[print]
+page_count_min = 24
+page_count_max = 150
+page_count_step = 2
+cover_separate_pdf = false
+max_file_mb = 500

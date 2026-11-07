@@ -1,0 +1,23 @@
+description = "A4 portrait (210 x 297 mm) hardcover. Generic defaults: check every value against your printer's spec sheet."
+page_width_mm = 210
+page_height_mm = 297
+bleed_mm = 3
+margin_mm = 0
+gap_mm = 4
+dpi = 300
+photos_per_page_max = 5
+
+[cover]
+enabled = true
+mode = "front-full"
+front_back_width_mm = 426
+height_mm = 303
+bleed_mm = 3
+spine_mm_per_10_pages = 1.0
+
+[print]
+page_count_min = 24
+page_count_max = 150
+page_count_step = 2
+cover_separate_pdf = true
+max_file_mb = 500
