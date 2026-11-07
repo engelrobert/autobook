@@ -121,3 +121,30 @@ def test_the_installed_app_finds_its_own_fotobuch(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", str(tmp_path / "autobook.exe"))
     assert fotobuch_bin() == str(tmp_path / "fotobuch" / exe.name)
+
+
+def test_the_app_starts_without_a_console(tmp_path, monkeypatch):
+    """autobook.exe has no console window: sys.stdout and sys.stderr are None. uvicorn's own console
+    logging asked stdout.isatty() and the first start on Windows failed."""
+    import sys
+    import urllib.request
+
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
+    port = free_port()
+    server = make_server(tmp_path / "lib", "tok", port, console=False)  # no streams needed at all
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    try:
+        for _ in range(100):
+            if server.started:
+                break
+            time.sleep(0.05)
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/ping", timeout=5) as r:
+            assert json.load(r)["app"] == "autobook"
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)
+    app.console_streams()  # and anything else that writes to them gets somewhere to go
+    assert sys.stdout.write("x") == 1 and not sys.stderr.isatty()
+    make_server(tmp_path / "lib", "tok", free_port())  # even uvicorn's console logging works then

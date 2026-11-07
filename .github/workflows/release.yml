@@ -79,6 +79,31 @@ jobs:
             Stop-Process -Id $ui.Id -Force
           }
 
+      - name: Start the desktop app (no console window, tray icon)
+        shell: pwsh
+        run: |
+          $env:AUTOBOOK_STATE = "$env:RUNNER_TEMP\state"
+          $env:AUTOBOOK_LIBRARY = "$env:RUNNER_TEMP\library"
+          $p = Start-Process -FilePath dist/autobook/autobook.exe -PassThru
+          try {
+            $ok = $false
+            for ($i = 0; $i -lt 60 -and -not $ok -and -not $p.HasExited; $i++) {
+              Start-Sleep -Seconds 1
+              $f = "$env:AUTOBOOK_STATE\instance.json"
+              if (Test-Path $f) {
+                $url = (Get-Content $f -Raw | ConvertFrom-Json).url -replace '/\?.*$', ''
+                try { $ok = (Invoke-RestMethod "$url/api/ping").app -eq "autobook" } catch { }
+              }
+            }
+            if (-not $ok) {
+              Get-ChildItem -Recurse "$env:LOCALAPPDATA\autobook" -Filter *.log -ErrorAction SilentlyContinue | Get-Content
+              throw "autobook.exe did not start (exited: $($p.HasExited))"
+            }
+            Write-Host "autobook.exe answers at $url"
+          } finally {
+            if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+          }
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"

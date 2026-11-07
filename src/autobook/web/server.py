@@ -799,12 +799,16 @@ def free_port(preferred: int = 0) -> int:
     raise OSError("no free port")
 
 
-def make_server(library: Path, token: str, port: int, *, ai_factory=None, updater=None):
-    """The app as a uvicorn server object (run() blocks; should_exit = True stops it)."""
+def make_server(library: Path, token: str, port: int, *, ai_factory=None, updater=None, console: bool = True):
+    """The app as a uvicorn server object (run() blocks; should_exit = True stops it).
+    console=False: no console logging of uvicorn's own (the desktop app has no console; its
+    messages go to the log file set up by the app)."""
     import uvicorn
+    from uvicorn.config import LOGGING_CONFIG
 
     config = uvicorn.Config(create_app(library, token, ai_factory=ai_factory, updater=updater),
-                            host="127.0.0.1", port=port, log_level="warning")
+                            host="127.0.0.1", port=port, log_level="warning",
+                            log_config=LOGGING_CONFIG if console else None)
     return uvicorn.Server(config)
 
 

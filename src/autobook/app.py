@@ -83,6 +83,14 @@ def setup_logging() -> Path:
     return d
 
 
+def console_streams() -> None:
+    """autobook.exe has no console window, so sys.stdout and sys.stderr are None, and libraries that
+    write to them or ask isatty() fail (uvicorn did, on the first start). They get a place to go."""
+    for name in ("stdout", "stderr"):
+        if getattr(sys, name) is None:
+            setattr(sys, name, open(os.devnull, "w", encoding="utf-8"))  # noqa: SIM115 - for the whole run
+
+
 def tray(url: str, server, updater, pystray=None) -> None:
     """The icon next to the clock; returns when "Quit" is chosen. Without pystray (e.g. a Linux
     desktop without tray support) it waits until the server stops (Ctrl+C)."""
@@ -120,6 +128,7 @@ def tray(url: str, server, updater, pystray=None) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
+    console_streams()
     try:  # Velopack's install/update hooks must run before anything else
         import velopack
 
@@ -145,7 +154,8 @@ def main(argv: list[str] | None = None) -> None:
     port, token = address(d)
     url = f"http://127.0.0.1:{port}/?t={token}"
     updater = Updater()
-    server = make_server(library_dir(), token, port, ai_factory=_ui_ai_factory(5.0, DEFAULT_MODEL), updater=updater)
+    server = make_server(library_dir(), token, port, ai_factory=_ui_ai_factory(5.0, DEFAULT_MODEL), updater=updater,
+                         console=False)
     thread = threading.Thread(target=server.run, daemon=True, name="autobook-server")
     thread.start()
     for _ in range(200):  # up to 10 s
