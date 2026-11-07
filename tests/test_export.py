@@ -12,6 +12,7 @@ from autobook.export.fotobuch import (
     export,
     fix_dividers,
     load_state,
+    remove_project,
     save_state,
     source_regex,
     staged_name,
@@ -52,6 +53,16 @@ def _layout(groups_pages):
 
 @requires_fotobuch
 @pytest.mark.fotobuch
+def test_the_project_folder_goes_even_with_read_only_git_objects(tmp_path):
+    """Windows refuses to delete read-only files, and Git makes its objects read-only."""
+    obj = tmp_path / "book" / ".git" / "objects" / "05" / "0cff8e"
+    obj.parent.mkdir(parents=True)
+    obj.write_bytes(b"x")
+    obj.chmod(0o444)
+    remove_project(tmp_path / "book")
+    assert not (tmp_path / "book").exists()
+
+
 def test_export_release_update_and_fix(work_copy, monkeypatch):
     plan = build_plan(work_copy, Brief(target_photos=30, language="de"), profile="square-21")
     plan.save(work_copy.plan)

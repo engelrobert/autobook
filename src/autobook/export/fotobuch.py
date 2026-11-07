@@ -22,6 +22,7 @@ import math
 import os
 import re
 import shutil
+import stat
 import subprocess
 import unicodedata
 from dataclasses import dataclass, field
@@ -110,6 +111,17 @@ def staged_name(photo: PlanPhoto, used: set[str]) -> str:
         name, k = f"{base}_{k}{ext}", k + 1
     used.add(name.lower())
     return name
+
+
+def remove_project(project_dir: Path) -> None:
+    """Delete Fotobuch's project folder. Git makes its objects read-only, and Windows refuses to delete
+    read-only files, so those are made writable first. Only for the project folder: the staging folders
+    hold hard links to the originals, whose read-only mark must stay."""
+    def writable_and_retry(func, path, _exc):
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+
+    shutil.rmtree(project_dir, onexc=writable_and_retry)
 
 
 def link_or_copy(src: Path, dst: Path) -> None:
@@ -396,7 +408,7 @@ def export(plan: BookPlan, work: Work, profile: Profile | str | None = None, *, 
     if project_dir.exists():
         if not (project_dir / f"{PROJECT}.yaml").exists():
             raise ExportConflict(f"{project_dir} exists but is not an autobook/Fotobuch project; not deleting it")
-        shutil.rmtree(project_dir)
+        remove_project(project_dir)
     return _fresh(plan, work, profile, fb, project_dir, progress, bool(guides))
 
 
@@ -652,7 +664,7 @@ def _update(plan, work, profile, fb, project_dir, progress, guides: bool | None 
         # nothing to keep and a lot to change: a new layout is faster and better balanced
         if guides is None:
             guides = bool(load_state(project_dir)["config"].get("preview", {}).get("show_borders", False))
-        shutil.rmtree(project_dir)
+        remove_project(project_dir)
         r = _fresh(plan, work, profile, fb, project_dir, progress, guides)
         r.warnings.insert(0, f"{changes} photos changed and the layout had no manual edits: laid out from scratch")
         return r
