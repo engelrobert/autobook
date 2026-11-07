@@ -164,6 +164,7 @@ def test_fotobuch_runs_without_a_console_window(tmp_path, monkeypatch):
         return SimpleNamespace(returncode=0, stdout="fotobuch 0.3.0", stderr="")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(sys, "platform", "linux")
     Fotobuch(binary="fotobuch").run(["--version"], tmp_path)
     assert "creationflags" not in seen  # elsewhere nothing changes
     monkeypatch.setattr(sys, "platform", "win32")
