@@ -64,10 +64,19 @@ AUTOBOOK_DEFS = r'''
 // Box covering the trim area (content origin is bleed + margin from the media edge)
 #let ab_on_trim(body) = place(top + left, dx: -margin, dy: -margin, box(width: ab_trim_w, height: ab_trim_h, body))
 
-// Rectangle from the top of the bleed area, full bleed width; frac = share of page height
-#let ab_band(from_frac, frac, fill) = place(top + left, dx: -margin - bleed,
-  dy: -margin - bleed + (ab_trim_h + 2 * bleed) * from_frac,
-  rect(width: ab_trim_w + 2 * bleed, height: (ab_trim_h + 2 * bleed) * frac, stroke: none, fill: fill))
+// A cover photo runs on into the bleed on every side where its slot meets the cover's edge, so
+// trimming (or folding around a hardcover's board) leaves no paper-coloured strip
+#let ab_cover_slot(slot, total_w, h, b) = {
+  let b = b / 1mm
+  let near(a, z) = calc.abs(a - z) < 0.5
+  let x0 = if near(slot.x_mm, 0) { -b } else { slot.x_mm }
+  let y0 = if near(slot.y_mm, 0) { -b } else { slot.y_mm }
+  let x1 = slot.x_mm + slot.width_mm
+  let x1 = if near(x1, total_w) { total_w + b } else { x1 }
+  let y1 = slot.y_mm + slot.height_mm
+  let y1 = if near(y1, h) { h + b } else { y1 }
+  (x_mm: x0, y_mm: y0, width_mm: x1 - x0, height_mm: y1 - y0)
+}
 
 #let ab_title_stack(info, fg) = {
   let items = ()
@@ -81,9 +90,7 @@ AUTOBOOK_DEFS = r'''
 
 #let ab_divider(info, paint) = {
   let style = info.at("style", default: "hero")
-  if style == "hero" {
-    ab_band(0.42, 0.58, gradient.linear(rgb(0, 0, 0, 0), rgb(0, 0, 0, 170), angle: 90deg))
-  }
+  // a hero photo comes darker under the title already (autobook shades it): no transparency in the PDF
   let fg = if style == "hero" { white } else { paint.ink }
   ab_on_trim(box(width: 100%, height: 100%, inset: ab_safe,
     if style == "plain" { align(center + horizon, ab_title_stack(info, fg)) }
@@ -101,7 +108,7 @@ AUTOBOOK_DEFS = r'''
       box(height: ab_frame, align(horizon, num))))
   } else {
     ab_on_trim(place(corner, dx: if right_page { -7mm } else { 7mm }, dy: -6mm,
-      box(fill: paint.bg.transparentize(20%), radius: 1.5pt, inset: (x: 1.8mm, y: 1mm), num)))
+      box(fill: paint.bg, radius: 1.5pt, inset: (x: 1.8mm, y: 1mm), num)))
   }
 }
 
@@ -119,11 +126,7 @@ AUTOBOOK_DEFS = r'''
   let c = ab.at("cover", default: (:))
   let front_x = (spine_x + spine_w) * 1mm
   let front_w = total_w * 1mm - front_x
-  if c.at("scrim", default: true) {
-    place(top + left, dx: front_x - c_margin, dy: -c_margin - c_bleed,
-      rect(width: front_w + c_bleed, height: (h * 1mm + 2 * c_bleed) * 0.45, stroke: none,
-        fill: gradient.linear(rgb(0, 0, 0, 150), rgb(0, 0, 0, 0), angle: 90deg)))
-  }
+  // scrim: the front photo is darker at the top under the white title (shaded by autobook)
   let fg = if c.at("scrim", default: true) { white } else { ab_ink }
   place(top + left, dx: front_x - c_margin, dy: -c_margin,
     box(width: front_w, height: h * 1mm, inset: (x: ab_safe + 4mm, y: ab_safe + 6mm),
@@ -202,7 +205,10 @@ PATCHES = [
     # 4. page colour under each inner page
     ("  #let page_data = data.layout.at(page_index)\n",
      "  #let page_data = data.layout.at(page_index)\n  #ab_page_fill(page_data)  // AUTOBOOK\n"),
-    # 5. inner page overlay before the page watermark
+    # 5. cover photos run on into the bleed
+    ("      #render_slot(0, slot, i, photo_id, photo_ref, photo_weight)",
+     "      #render_slot(0, ab_cover_slot(slot, cover_total_w, cover_h, cover_bleed), i, photo_id, photo_ref, photo_weight)  // AUTOBOOK"),
+    # 6. inner page overlay before the page watermark
     ("  #let display_nr = page_index - layout_start + 1\n",
      "  #let display_nr = page_index - layout_start + 1\n  #ab_overlay(page_data, display_nr)  // AUTOBOOK\n"),
 ]

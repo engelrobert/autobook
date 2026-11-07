@@ -87,6 +87,11 @@
       "title": "Scope",
       "type": "string"
     },
+    "target_from_user": {
+      "default": false,
+      "title": "Target From User",
+      "type": "boolean"
+    },
     "target_photos": {
       "default": 200,
       "title": "Target Photos",
@@ -171,6 +176,41 @@
       "default": false,
       "title": "Subtitles",
       "type": "boolean"
+    },
+    "favourite_markers": {
+      "default": [],
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Favourite Markers",
+      "type": "array"
+    },
+    "favourites_mode": {
+      "default": "fill",
+      "enum": [
+        "fill",
+        "only",
+        "best",
+        "ignore"
+      ],
+      "title": "Favourites Mode",
+      "type": "string"
+    },
+    "profile": {
+      "default": "square-21",
+      "title": "Profile",
+      "type": "string"
+    },
+    "use_ai": {
+      "default": true,
+      "title": "Use Ai",
+      "type": "boolean"
+    },
+    "effort": {
+      "default": "high",
+      "title": "Effort",
+      "type": "string"
     },
     "notes": {
       "default": "",

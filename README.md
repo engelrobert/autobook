@@ -188,8 +188,17 @@ favourites in 4.5 minutes for $0.12 in total; laying out 270 photos from scratch
 Built-in profiles (`autobook profiles`) are generic: copy one (`src/autobook/resources/profiles/*.toml`) and
 set your printer's exact trim size, bleed, cover width, spine growth and page-count rules, then pass
 `--profile path/to/mine.toml`. `autobook release` checks page count and step, page and trim boxes,
-embedded fonts, image resolution and file size, and splits the cover into its own PDF when the profile says
-so. Output is sRGB (no CMYK/PDF-X); pick a printer that accepts that. Order a test print first.
+embedded fonts, image resolution, transparency and file size, and splits the cover into its own PDF when the
+profile says so. Output is sRGB (no CMYK/PDF-X); pick a printer that accepts that. Order a test print first.
+
+**epubli** has its own formats (`epubli-a4-quer`, `epubli-a4-hoch`, `epubli-bildband`, `epubli-quadrat`;
+in the app: Wishes → "epubli", or Print → "Andere Druckerei oder anderes Format"). For them autobook makes
+the files epubli asks for in the book's `print` folder: the inner pages as one PDF (one page size), the
+cover as JPG and PDF at the size you type in from [epubli's cover calculator](https://www.epubli.de/preise)
+in the Print step (total width and height, spine, and the margin cut off or folded around the board:
+3 mm softcover, about 11 mm hardcover). The PDF has no transparency, and a file over epubli's 250 MB upload
+limit gets its photos encoded smaller (JPEG quality 92 down to 75, only as far as needed). Upload the
+inner pages as the content file and the cover with "Eigenes Gesamtcover hochladen".
 
 ## Evaluate the selection
 

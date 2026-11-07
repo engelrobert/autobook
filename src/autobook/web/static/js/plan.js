@@ -187,6 +187,16 @@ export function setPageColor(plan, key, colour) {
   plan.book.page_colors = colours;
 }
 
+// The printer and format (a profile name). Same page size: the pages stay; another one: laid out anew.
+export function setProfile(plan, name) {
+  plan.book.profile = name;
+}
+
+// The cover as the printer's cover calculator gives it ({binding, width_mm, height_mm, spine_mm, margin_mm})
+export function setCoverSize(plan, size) {
+  plan.book.cover_size = size;
+}
+
 // Where a trimmed photo is cut: [x, y], 0 keeps the left/top edge, 1 the right/bottom one; null = centred
 export function setCrop(plan, id, xy) {
   const crops = { ...(plan.book.crops || {}) };

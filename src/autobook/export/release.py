@@ -1,4 +1,8 @@
-"""Release build (300 DPI via Fotobuch) and a preflight check against the printer profile."""
+"""Release build (300 DPI via Fotobuch) and a preflight check against the printer profile.
+
+For printers that want the inner pages and the cover as files of their own (epubli: "your PDF has
+pages of different sizes" otherwise), the files to upload go into the book's print folder, made to
+fit the printer's upload limit."""
 
 from __future__ import annotations
 
@@ -13,6 +17,8 @@ from pypdf import PdfReader, PdfWriter
 
 from autobook.export.fotobuch import PROJECT, Fotobuch
 from autobook.export.profile import Profile, load_profile
+from autobook.export.shrink import TooLarge, fit
+from autobook.plan.models import BookPlan, CoverSize
 from autobook.settings import Work
 
 MM = 72 / 25.4
@@ -20,6 +26,9 @@ DPI_LINE = re.compile(r"Page (\d+): (\S+) — (\d+) DPI")
 
 
 RELEASE_FILE = "release.json"  # in the work dir: the last check of the print file
+PRINT_DIR = "print"  # in the work dir: the files to upload, when the printer wants them separate
+NAMES = {"de": ("Innenteil", "Umschlag"), "en": ("Interior", "Cover")}
+UNSAFE = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
 
 
 @dataclass
@@ -81,6 +90,25 @@ def _fonts_embedded(reader: PdfReader) -> tuple[bool, list[str]]:
     return not missing, sorted(missing)
 
 
+def _transparent_pages(reader: PdfReader) -> list[int]:
+    """Pages (from 1) with transparency: soft masks, opacity below 1, images with an alpha channel."""
+    def has(resources, seen: set[int]) -> bool:
+        res = resources or {}
+        for ref in (res.get("/ExtGState") or {}).values():
+            g = ref.get_object()
+            if str(g.get("/SMask", "/None")) != "/None" or any(k in g and float(g[k]) < 1 for k in ("/ca", "/CA")):
+                return True
+        for ref in (res.get("/XObject") or {}).values():
+            o = ref.get_object()
+            if id(o) in seen:
+                continue
+            seen.add(id(o))
+            if "/SMask" in o or (o.get("/Subtype") == "/Form" and has(o.get("/Resources"), seen)):
+                return True
+        return False
+    return [i for i, page in enumerate(reader.pages, 1) if has(page.get("/Resources"), set())]
+
+
 def _min_ppi(pdf: Path) -> tuple[int | None, str]:
     exe = shutil.which("pdfimages")
     if not exe:
@@ -97,7 +125,11 @@ def _min_ppi(pdf: Path) -> tuple[int | None, str]:
     return (min(ppis) if ppis else None), f"{len(ppis)} images checked"
 
 
-def preflight(pdf: Path, profile: Profile, *, has_cover: bool, dpi_warnings: list[str] | None = None) -> Preflight:
+def preflight(pdf: Path, profile: Profile, *, has_cover: bool, dpi_warnings: list[str] | None = None,
+              uploads: list[Path] | None = None, cover_size: CoverSize | None = None,
+              too_large: TooLarge | None = None) -> Preflight:
+    """pdf: Fotobuch's print PDF (cover first when has_cover). uploads: the files to send to the
+    printer, when they are not pdf itself."""
     rep = Preflight(pdf)
     reader = PdfReader(str(pdf))
     pages = reader.pages
@@ -128,9 +160,18 @@ def preflight(pdf: Path, profile: Profile, *, has_cover: bool, dpi_warnings: lis
             id="trim", bad=bad_trim[:5])
     if has_cover:
         mb = _box(pages[0], "MediaBox")
-        rep.add("cover size", True, f"{(mb[2] - mb[0]) / MM:.1f} × {(mb[3] - mb[1]) / MM:.1f} mm incl. bleed "
-                "(check spine width against your printer's calculator)", "info",
-                id="cover", w=round((mb[2] - mb[0]) / MM, 1), h=round((mb[3] - mb[1]) / MM, 1))
+        w, h = round((mb[2] - mb[0]) / MM, 1), round((mb[3] - mb[1]) / MM, 1)
+        if not profile.cover_typed:
+            rep.add("cover size", True, f"{w} × {h} mm incl. bleed (check spine width against your printer's "
+                    "calculator)", "info", id="cover", w=w, h=h)
+        elif cover_size is None:
+            rep.add("cover size", False, f"{w} × {h} mm is an estimate: type in the size from the printer's cover "
+                    "calculator", id="cover_size", w=w, h=h, typed=False)
+        else:
+            ok = abs(w - cover_size.width_mm) <= 0.6 and abs(h - cover_size.height_mm) <= 0.6
+            rep.add("cover size", ok, f"{w} × {h} mm (typed in: {cover_size.width_mm:g} × {cover_size.height_mm:g} mm, "
+                    f"spine {cover_size.spine_mm:g} mm, {cover_size.binding})", id="cover_size", w=w, h=h, typed=True,
+                    spine=cover_size.spine_mm, binding=cover_size.binding)
     ok, missing = _fonts_embedded(reader)
     rep.add("fonts embedded", ok, "all fonts embedded" if ok else f"not embedded: {', '.join(missing)}",
             id="fonts", missing=missing)
@@ -141,42 +182,88 @@ def preflight(pdf: Path, profile: Profile, *, has_cover: bool, dpi_warnings: lis
     if dpi_warnings:
         rep.add("photos below target DPI", False, f"{len(dpi_warnings)}: " + "; ".join(dpi_warnings[:4]), "warning",
                 id="low_dpi", n=len(dpi_warnings))
-    size_mb = pdf.stat().st_size / 1e6
+    transparent = _transparent_pages(reader)
+    allowed = profile.print.get("transparency", True)
+    rep.add("no transparency", not transparent,
+            "none" if not transparent else f"on pages {transparent[:5]}" + ("" if allowed else
+                                                                            " (the printer may not print it)"),
+            "warning" if allowed else "error", id="transparency", pages=transparent[:5])
+    biggest = max(uploads or [pdf], key=lambda f: f.stat().st_size)
+    size_mb = biggest.stat().st_size / 1e6
     maxmb = float(profile.print.get("max_file_mb", 1e9) or 1e9)
-    rep.add("file size", size_mb <= maxmb, f"{size_mb:.1f} MB (limit {maxmb:g} MB)",
+    rep.add("file size", size_mb <= maxmb and too_large is None,
+            f"{biggest.name}: {size_mb:.1f} MB (limit {maxmb:g} MB)" + (f"; {too_large}" if too_large else ""),
             id="file_size", mb=round(size_mb, 1), max=maxmb)
     rep.add("colour", True, "sRGB images with embedded ICC profile (no CMYK/PDF-X conversion)", "info", id="colour")
     return rep
 
 
-def split_cover(pdf: Path) -> tuple[Path, Path]:
+def print_files(pdf: Path, out: Path, *, title: str, language: str = "en", has_cover: bool = True,
+                cover_jpg: bool = False, dpi: float = 300) -> list[Path]:
+    """The inner pages and the cover as files of their own in out (made anew each time): the inner
+    pages first, then the cover as PDF and, for printers that ask for it, as JPG at full resolution."""
+    import pypdfium2 as pdfium
+
+    inner_name, cover_name = NAMES.get(language, NAMES["en"])
+    stem = " ".join(UNSAFE.sub(" ", title).split()).strip(" .")[:60] or "autobook"  # a name every system takes
+    out.mkdir(parents=True, exist_ok=True)
+    for old in out.iterdir():  # only our own kinds of files: the folder holds what to upload now
+        if old.suffix.lower() in (".pdf", ".jpg"):
+            old.unlink()
     reader = PdfReader(str(pdf))
-    cover, inner = PdfWriter(), PdfWriter()
-    cover.add_page(reader.pages[0])
-    for p in reader.pages[1:]:
-        inner.add_page(p)
-    c_path = pdf.with_name(pdf.stem + "_cover.pdf")
-    i_path = pdf.with_name(pdf.stem + "_inner.pdf")
-    with open(c_path, "wb") as f:
-        cover.write(f)
-    with open(i_path, "wb") as f:
-        inner.write(f)
-    return c_path, i_path
+    files = []
+
+    def write(pages, name: str) -> Path:
+        w = PdfWriter()
+        for page in pages:
+            w.add_page(page)
+        w.add_metadata({"/Title": title})  # epubli prints a spine from the title of the file
+        with open(out / name, "wb") as f:
+            w.write(f)
+        files.append(out / name)
+        return out / name
+
+    write(reader.pages[1:] if has_cover else reader.pages, f"{stem} - {inner_name}.pdf")
+    if has_cover:
+        cover = write(reader.pages[:1], f"{stem} - {cover_name}.pdf")
+        if cover_jpg:
+            doc = pdfium.PdfDocument(str(cover))
+            try:
+                im = doc[0].render(scale=dpi / 72).to_pil().convert("RGB")
+            finally:
+                doc.close()
+            jpg = out / f"{stem} - {cover_name}.jpg"
+            im.save(jpg, "JPEG", quality=92, dpi=(dpi, dpi))  # the dpi gives the printer the size in mm
+            files.insert(1, jpg)
+    return files
 
 
 def release(work: Work, profile: Profile | str | None = None, fb: Fotobuch | None = None) -> Preflight:
     manifest = json.loads(work.manifest.read_text(encoding="utf-8"))
     profile = profile if isinstance(profile, Profile) else load_profile(profile or manifest["profile"])
+    plan = BookPlan.load(work.plan) if work.plan.exists() else None
     project_dir = Path(manifest["project_dir"])
     fb = fb or Fotobuch()
     out = fb.run(["build", "release"], project_dir)
     dpi_warnings = [f"page {m.group(1)}: {m.group(2)} at {m.group(3)} DPI" for m in DPI_LINE.finditer(out)]
     pdf = project_dir / f"{PROJECT}_final.pdf"
     has_cover = bool(manifest.get("cover"))
-    rep = preflight(pdf, profile, has_cover=has_cover, dpi_warnings=dpi_warnings)
-    rep.files.append(pdf)
-    if has_cover and profile.print.get("cover_separate_pdf"):
-        rep.files.extend(split_cover(pdf))
+    uploads = [pdf]
+    if profile.separate_files:
+        uploads = print_files(pdf, work.root / PRINT_DIR, title=plan.book.title if plan else work.root.name,
+                              language=plan.book.language if plan else "en", has_cover=has_cover,
+                              cover_jpg=bool(profile.print.get("cover_jpg")), dpi=profile.dpi)
+    too_large = None
+    limit = float(profile.print.get("max_file_mb", 0) or 0)
+    for f in uploads:
+        if limit and f.suffix == ".pdf":
+            try:
+                fit(f, limit)
+            except TooLarge as e:
+                too_large = e
+    rep = preflight(pdf, profile, has_cover=has_cover, dpi_warnings=dpi_warnings, uploads=uploads,
+                    cover_size=plan.book.cover_size if plan else None, too_large=too_large)
+    rep.files.extend(uploads)
     # the browser app's Print step shows this result until the book changes again
     (work.root / RELEASE_FILE).write_text(json.dumps(rep.as_dict(), indent=1, ensure_ascii=False), encoding="utf-8")
     return rep

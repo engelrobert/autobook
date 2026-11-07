@@ -18,6 +18,24 @@ def page_pixels(width_mm: float, height_mm: float, bleed_mm: float, dpi: float =
 
 
 HERO_FOCUS = (0.5, 0.4)  # sides centred; a little more of the upper part (skies, heads)
+# Darker parts under white titles, in the photo itself: printers want no transparency in the PDF
+# (epubli: "may not be printed at all"). (where it starts or ends as a share of the height, darkest)
+OPENER_SHADE = (0.42, 170 / 255)  # chapter pages: from 42 % down, darkest at the bottom edge
+COVER_SCRIM = (0.45, 150 / 255)  # front cover: darkest at the top edge, gone at 45 %
+
+
+def shade(im: Image.Image, edge: float, darkest: float, *, top: bool) -> Image.Image:
+    """Darken towards the top (top=True: from the edge down to `edge` of the height) or towards the
+    bottom (from `edge` down), linearly up to `darkest` (0..1): black laid over the photo, baked in."""
+    w, h = im.size
+    start = round(h * edge)
+    column = []
+    for y in range(h):
+        t = (1 - y / start if y < start else 0.0) if top else ((y - start) / max(1, h - start) if y >= start else 0.0)
+        column.append(round(255 * darkest * t))
+    mask = Image.new("L", (1, h))
+    mask.putdata(column)
+    return Image.composite(Image.new(im.mode, im.size), im, mask.resize((w, h)))
 
 
 def _crop(src: str | Path, target: float, focus: tuple[float, float] | None,
@@ -43,18 +61,28 @@ def _centre_on(at: float, full: int, part: int) -> float:
 
 
 def hero_crop(src: str | Path, out: Path, size: tuple[int, int],
-              focus: tuple[float, float] | None = None, point: tuple[float, float] | None = None) -> Path:
+              focus: tuple[float, float] | None = None, point: tuple[float, float] | None = None,
+              shading: tuple[float, float] | None = None, *, top: bool = False) -> Path:
     """Crop a photo to the page aspect ratio (full bleed) and downscale to at most `size`.
 
-    Only full-page divider heroes are cropped into a file this way; the template cuts the others.
-    focus (x, y): where the cut is, 0 keeps the left/top edge, 1 the right/bottom one.
+    Full-page divider heroes and the front cover are cropped into a file this way; the template cuts
+    the others. focus (x, y): where the cut is, 0 keeps the left/top edge, 1 the right/bottom one.
+    shading: darken under the title (OPENER_SHADE towards the bottom, COVER_SCRIM with top=True).
     """
     tw, th = size
     im = _crop(src, tw / th, focus, point)
+    icc = im.info.get("icc_profile")
     if im.width > tw:
         im = im.resize((tw, th), Image.Resampling.LANCZOS)
+    if im.mode not in ("RGB", "L"):
+        im = im.convert("RGB")
+    if shading:
+        im = shade(im, *shading, top=top)
     out.parent.mkdir(parents=True, exist_ok=True)
-    im.save(out, "JPEG", quality=92, subsampling=0)
+    if out.suffix.lower() in (".jpg", ".jpeg"):
+        im.save(out, "JPEG", quality=92, subsampling=0, icc_profile=icc)
+    else:  # an older book's cover file keeps its name, so it keeps its type too
+        im.save(out, icc_profile=icc)
     return out
 
 

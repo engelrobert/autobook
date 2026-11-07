@@ -3,12 +3,15 @@
 import json
 
 import pytest
+from PIL import Image
 from pypdf import PdfReader
 
 from autobook.brief.models import Brief
 from autobook.catalog import Catalog
 from autobook.export.fotobuch import (
     GEN_GROUP,
+    cover_config,
+    cover_photo_px,
     export,
     fix_dividers,
     load_state,
@@ -21,6 +24,7 @@ from autobook.export.profile import available_profiles, load_profile
 from autobook.export.release import release
 from autobook.pipeline.select import build_plan
 from autobook.plan.models import PlanPhoto
+from autobook.render.pages import COVER_SCRIM, hero_crop
 from tests.conftest import requires_fotobuch
 
 
@@ -51,8 +55,6 @@ def _layout(groups_pages):
     return {"config": {"book": cfg}, "photos": [], "layout": lay}
 
 
-@requires_fotobuch
-@pytest.mark.fotobuch
 def test_the_project_folder_goes_even_with_read_only_git_objects(tmp_path):
     """Windows refuses to delete read-only files, and Git makes its objects read-only."""
     obj = tmp_path / "book" / ".git" / "objects" / "05" / "0cff8e"
@@ -63,6 +65,8 @@ def test_the_project_folder_goes_even_with_read_only_git_objects(tmp_path):
     assert not (tmp_path / "book").exists()
 
 
+@requires_fotobuch
+@pytest.mark.fotobuch
 def test_export_release_update_and_fix(work_copy, monkeypatch):
     plan = build_plan(work_copy, Brief(target_photos=30, language="de"), profile="square-21")
     plan.save(work_copy.plan)
@@ -116,7 +120,11 @@ def test_export_release_update_and_fix(work_copy, monkeypatch):
     m = json.loads(work_copy.manifest.read_text())
     assert m["cover"]["plan_id"] == new_cover
     staged = work_copy.staging / m["cover"]["fid"]
-    assert sha(staged) == sha(cat.photo(new_cover)["path"]) and sha(old_cover_src) == old_sha
+    # the new photo cut to its place on the cover and darker at the top, written next to the original
+    size = cover_photo_px(cover_config(load_profile("square-21"), plan), 300)
+    expected = hero_crop(cat.photo(new_cover)["path"], work_copy.root / "expected.jpg", size, None, None,
+                         COVER_SCRIM, top=True)
+    assert sha(staged) == sha(expected) and sha(old_cover_src) == old_sha
 
     # simulate a full rebuild that leaves dividers in wrong places, then fix
     lay = data["layout"]
@@ -230,7 +238,7 @@ def test_pages_fill_the_frame_and_take_colours(work_copy):
     for left, top, right, bottom in edges(data, 0):
         assert abs(left - right) < 0.05 and abs(top - bottom) < 0.05 and min(left, top) < 0.05
 
-    # choosing the cut: the template moves a trimmed photo inside its slot (here the cover, which loses a lot)
+    # choosing the cut: a trimmed photo moves inside its slot (here the cover, which loses a lot)
     def cover_slot_pixels(pdf):
         cfg = load_state(r3.project_dir)["config"]["book"]["cover"]
         slot = load_state(r3.project_dir)["layout"][0]["slots"][0]
@@ -251,7 +259,7 @@ def test_pages_fill_the_frame_and_take_colours(work_copy):
     assert r4.mode == "update" and r4.warnings[0] == "update: 0 added, 0 removed"
     side = _yaml().load((r4.project_dir / "autobook.yaml").read_text(encoding="utf-8"))
     m = json.loads(work_copy.manifest.read_text())
-    assert side["crops"] == {m["cover"]["fid"]: [0.0, 0.0], m["photos"][page_photo]["fid"]: [0.0, 1.0]}
+    assert side["crops"] == {m["photos"][page_photo]["fid"]: [0.0, 1.0]}  # the cover is staged already cut
     one_side = cover_slot_pixels(r4.pdf)
     plan.book.crops = {plan.book.cover_photo: (1.0, 1.0)}
     other_side = cover_slot_pixels(export(plan, work_copy).pdf)
@@ -326,10 +334,11 @@ def test_chapter_photo_cut_follows_the_focus(tmp_path):
             assert (o.getpixel((5, 150))[0] > 180 and o.getpixel((5, 150))[1] < 80) is red, x
 
 
-def test_split_cover(tmp_path):
+def test_print_files_one_page_size_each(tmp_path):
+    """epubli: "your PDF has pages of different sizes" when the cover comes with the inner pages."""
     from pypdf import PdfWriter
 
-    from autobook.export.release import split_cover
+    from autobook.export.release import print_files
 
     w = PdfWriter()
     for size in ((1230, 630), (612, 612), (612, 612)):
@@ -337,6 +346,110 @@ def test_split_cover(tmp_path):
     pdf = tmp_path / "book_final.pdf"
     with open(pdf, "wb") as f:
         w.write(f)
-    cover, inner = split_cover(pdf)
-    assert len(PdfReader(str(cover)).pages) == 1 and len(PdfReader(str(inner)).pages) == 2
+    out = tmp_path / "print"
+    out.mkdir()
+    (out / "old - Innenteil.pdf").write_bytes(b"x")  # from an earlier title: goes
+    (out / "notes.txt").write_text("mine")  # not ours: stays
+    files = print_files(pdf, out, title='Ferien: "Lac"', language="de", cover_jpg=True, dpi=72)
+    assert [f.name for f in files] == ["Ferien Lac - Innenteil.pdf", "Ferien Lac - Umschlag.jpg",
+                                       "Ferien Lac - Umschlag.pdf"]
+    assert sorted(f.name for f in out.iterdir()) == sorted([*(f.name for f in files), "notes.txt"])
+    inner, jpg, cover = files
+    assert {float(p.mediabox.width) for p in PdfReader(str(inner)).pages} == {612}
+    assert len(PdfReader(str(inner)).pages) == 2 and PdfReader(str(inner)).metadata.title == 'Ferien: "Lac"'
     assert float(PdfReader(str(cover)).pages[0].mediabox.width) == 1230
+    with Image.open(jpg) as im:  # full size: the dpi gives the printer the size in mm
+        assert im.size == (1230, 630) and round(im.info["dpi"][0]) == 72
+
+
+def test_titles_get_their_darker_part_in_the_photo(tmp_path):
+    """No transparency in the PDF: the shading under white titles is in the photo itself."""
+    from autobook.render.pages import OPENER_SHADE
+
+    src = tmp_path / "grey.jpg"
+    Image.new("RGB", (400, 300), (200, 200, 200)).save(src, quality=100)
+    row = lambda im, y: sum(im.getpixel((x, y))[0] for x in range(0, 400, 40)) / 10  # noqa: E731
+    with Image.open(hero_crop(src, tmp_path / "opener.jpg", (400, 300), shading=OPENER_SHADE)) as im:
+        assert abs(row(im, 2) - 200) < 3 and abs(row(im, 120) - 200) < 3  # untouched above 42 %
+        assert abs(row(im, 299) - 200 * (1 - 170 / 255)) < 4  # darkest at the bottom edge
+    with Image.open(hero_crop(src, tmp_path / "cover.jpg", (400, 300), shading=COVER_SCRIM, top=True)) as im:
+        assert abs(row(im, 0) - 200 * (1 - 150 / 255)) < 4 and abs(row(im, 140) - 200) < 3
+
+
+def test_a_print_file_over_the_limit_is_made_to_fit(tmp_path):
+    from PIL import ImageFilter
+
+    from autobook.export.shrink import TooLarge, fit
+
+    pages = [Image.effect_noise((1200, 900), 60).convert("RGB").filter(ImageFilter.GaussianBlur(1.2))
+             for _ in range(3)]
+    pdf = tmp_path / "book.pdf"
+    pages[0].save(pdf, save_all=True, append_images=pages[1:], quality=97, subsampling=0, resolution=300)
+    size = pdf.stat().st_size
+    assert fit(pdf, limit_mb=size * 2 / 1e6) is None and pdf.stat().st_size == size  # small enough: untouched
+    quality = fit(pdf, limit_mb=size * 0.6 / 1e6)
+    assert quality is not None and quality < 92 and pdf.stat().st_size <= size * 0.6
+    reader = PdfReader(str(pdf))
+    assert len(reader.pages) == 3
+    for page in reader.pages:  # the same pixels, only encoded smaller
+        img = next(iter(page.images))
+        assert img.image.size == (1200, 900)
+    with pytest.raises(TooLarge):
+        fit(pdf, limit_mb=0.01)
+    assert sorted(f.name for f in tmp_path.iterdir()) == ["book.pdf"]
+
+
+@requires_fotobuch
+@pytest.mark.fotobuch
+def test_a_book_for_epubli(work_copy):
+    """Inner pages and cover as files of their own, the cover at the size typed in from epubli's
+    calculator (the photo running on into the wrap), and no transparency anywhere."""
+    import pypdfium2 as pdfium
+
+    from autobook.plan.models import CoverSize
+
+    MM = 72 / 25.4
+    plan = build_plan(work_copy, Brief(target_photos=30, language="de"), profile="a4-landscape")
+    plan.save(work_copy.plan)
+    export(plan, work_copy, fresh=True)
+    # the same pages at another printer: no new layout
+    plan.book.profile = "epubli-a4-quer"
+    r = export(plan, work_copy)
+    assert r.mode == "update" and json.loads(work_copy.manifest.read_text())["profile"] == "epubli-a4-quer"
+    rep = release(work_copy)
+    by = {c.id: c for c in rep.checks}
+    assert not by["cover_size"].ok and not rep.ok  # the cover's size is only estimated so far
+    assert by["transparency"].ok and by["file_size"].ok and by["pages"].values["min"] == 36
+    inner, jpg, cover = rep.files
+    assert inner.parent == work_copy.root / "print" and inner.name.endswith(" - Innenteil.pdf")
+    sizes = {(round(float(p.mediabox.width) / MM, 1), round(float(p.mediabox.height) / MM, 1))
+             for p in PdfReader(str(inner)).pages}
+    assert sizes == {(303.0, 216.0)}  # one page size: A4 landscape and 3 mm bleed
+
+    plan.book.cover_size = CoverSize(binding="hardcover", width_mm=640, height_mm=236, spine_mm=12, margin_mm=11)
+    plan.save(work_copy.plan)
+    assert export(plan, work_copy).mode == "update"
+    rep = release(work_copy)
+    assert rep.ok, rep.render()
+    inner, jpg, cover = rep.files
+    box = PdfReader(str(cover)).pages[0].mediabox
+    assert (round(float(box.width) / MM, 1), round(float(box.height) / MM, 1)) == (640.0, 236.0)
+    with Image.open(jpg) as im:
+        assert abs(im.size[0] - 640 / 25.4 * 300) <= 1 and abs(im.size[1] - 236 / 25.4 * 300) <= 1
+    # the front photo reaches the outer edge of the wrap: no flat paper-coloured strip there
+    doc = pdfium.PdfDocument(str(cover))
+    try:
+        im = doc[0].render(scale=40 / 72).to_pil().convert("L")
+    finally:
+        doc.close()
+    k = 40 / 25.4
+    for column in (im.width - 1, round(632 * k)):  # the wrap's outer edge, then 3 mm inside the trim: photo
+        inside = round(620 * k)
+        same = [abs(im.getpixel((column, y)) - im.getpixel((inside, y))) for y in range(2, im.height - 2)]
+        assert sum(same) / len(same) < 25 and max(im.getpixel((column, y)) for y in range(2, im.height - 2)) < 250
+    assert not any(c.id == "transparency" and not c.ok for c in rep.checks)
+
+    # another page size: laid out from scratch, the print folder follows
+    plan.book.profile = "epubli-quadrat"
+    r = export(plan, work_copy)
+    assert r.mode == "fresh" and r.warnings[0].startswith("new format (epubli-a4-quer -> epubli-quadrat)")

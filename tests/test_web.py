@@ -357,5 +357,44 @@ def test_every_text_of_the_app_exists_in_every_language():
     assert not missing, missing
     for prefix in re.findall(r"t\(`([\w.]+)\.\$\{", js):  # t(`format.${name}`) etc.
         assert any(k.startswith(prefix + ".") for k in langs["en"]), prefix
-    for p in ("a4-landscape", "a4-portrait", "square-21", "square-30"):
-        assert f"format.{p}" in langs["en"]
+    from autobook.export.profile import available_profiles, load_profile
+
+    for name in available_profiles():  # every format, and the printer it belongs to, has a name
+        assert f"format.{name}" in langs["en"] and f"printer.{load_profile(name).printer or 'other'}" in langs["en"]
+
+
+def test_print_files_for_a_printer_that_wants_them_separate(tmp_path, work_copy):
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    register_book(lib, work_copy.root)
+    c = _app(lib)
+    name = work_copy.root.name
+    epubli = {p["name"]: p for p in c.get("/api/books", headers=H).json()["profiles"]}["epubli-a4-quer"]
+    assert epubli["printer"] == "epubli" and epubli["separate_files"] and epubli["cover_typed"]
+    assert epubli["max_file_mb"] == 250 and epubli["margins"] == {"hardcover": 11, "softcover": 3}
+    assert epubli["calculator"].startswith("https://www.epubli.de/")
+    # the files the last print run made (written by export.release): opened one by one
+    out = work_copy.root / "print"
+    out.mkdir()
+    (out / "Lac - Innenteil.pdf").write_bytes(b"%PDF-1.7 inner")
+    (out / "Lac - Umschlag.jpg").write_bytes(b"\xff\xd8 cover")
+    (work_copy.root / "release.json").write_text(json.dumps({"ok": True, "checks": [], "report": "",
+                                                             "files": [str(f) for f in sorted(out.iterdir())]}))
+    r = c.get(f"/api/books/{name}/print-file/0", headers=H)
+    assert r.status_code == 200 and r.content == b"%PDF-1.7 inner" and r.headers["content-type"] == "application/pdf"
+    assert "Innenteil.pdf" in r.headers["content-disposition"]
+    assert c.get(f"/api/books/{name}/print-file/1", headers=H).headers["content-type"] == "image/jpeg"
+    assert c.get(f"/api/books/{name}/print-file/2", headers=H).status_code == 404
+    assert c.get(f"/api/books/{name}/print-file/0").status_code in (401, 403)  # only with the token
+    # the cover's size from the calculator is part of the plan; nonsense is refused
+    from autobook.brief.models import Brief
+    from autobook.pipeline.select import build_plan
+
+    build_plan(work_copy, Brief(target_photos=20), profile="epubli-a4-quer").save(work_copy.plan)
+    plan = json.loads(work_copy.plan.read_text())
+    plan["book"]["cover_size"] = {"binding": "hardcover", "width_mm": 640, "height_mm": 236, "spine_mm": 12,
+                                  "margin_mm": 11}
+    assert c.post(f"/api/books/{name}/plan", json=plan, headers=H).status_code == 200
+    assert json.loads(work_copy.plan.read_text())["book"]["cover_size"]["spine_mm"] == 12
+    plan["book"]["cover_size"]["margin_mm"] = 400
+    assert c.post(f"/api/books/{name}/plan", json=plan, headers=H).status_code == 422

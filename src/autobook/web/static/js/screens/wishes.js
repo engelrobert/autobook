@@ -144,8 +144,19 @@ function render(B) {
   }
 
   function formats() {
+    const current = profileOf(S.profile), printer = current.printer || "";
+    const printers = [...new Set(G.profiles.map(p => p.printer || ""))].sort((a, b) => (a === "") - (b === ""));
+    const pick = pr => {  // the closest format at the other printer: the same shape, then the same size
+      const far = p => 10 * Math.abs(Math.log((p.width / p.height) / (current.width / current.height))) +
+        Math.abs(p.width * p.height - current.width * current.height) / (current.width * current.height);
+      S.profile = G.profiles.filter(p => (p.printer || "") === pr).sort((a, b) => far(a) - far(b))[0].name;
+      changed();
+    };
     return el("section", { class: "q" }, el("h2", {}, t("wishes.format")),
-      el("div", { class: "choices three" }, G.profiles.map(p => {
+      printers.length > 1 ? el("div", { class: "seg", role: "radiogroup", "aria-label": t("printer.where") },
+        printers.map(pr => el("button", { class: "seg-btn" + (pr === printer ? " on" : ""), role: "radio",
+          "aria-checked": String(pr === printer), onclick: () => { if (pr !== printer) pick(pr); } }, t(`printer.${pr || "other"}`)))) : null,
+      el("div", { class: "choices three" }, G.profiles.filter(p => (p.printer || "") === printer).map(p => {
         const on = S.profile === p.name, ar = p.width / p.height;
         const h = 132, w = Math.round(h * ar);
         return el("button", { class: "choice format" + (on ? " on" : ""), "aria-pressed": String(on),

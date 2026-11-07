@@ -36,6 +36,14 @@
           "default": null,
           "title": "Cover Photo"
         },
+        "cover_candidates": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Cover Candidates",
+          "type": "array"
+        },
         "back_photo": {
           "anyOf": [
             {
@@ -57,6 +65,63 @@
           "default": 4.5,
           "title": "Photos Per Page",
           "type": "number"
+        },
+        "frame": {
+          "default": "narrow",
+          "enum": [
+            "none",
+            "narrow",
+            "wide"
+          ],
+          "title": "Frame",
+          "type": "string"
+        },
+        "background": {
+          "default": "white",
+          "title": "Background",
+          "type": "string"
+        },
+        "page_colors": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "title": "Page Colors",
+          "type": "object"
+        },
+        "crops": {
+          "additionalProperties": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array"
+          },
+          "default": {},
+          "title": "Crops",
+          "type": "object"
+        },
+        "auto_fit": {
+          "default": true,
+          "title": "Auto Fit",
+          "type": "boolean"
+        },
+        "cover_size": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CoverSize"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -144,6 +209,32 @@
           },
           "title": "Alternatives",
           "type": "array"
+        },
+        "excluded": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Excluded",
+          "type": "array"
+        },
+        "pages": {
+          "anyOf": [
+            {
+              "items": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pages"
         }
       },
       "required": [
@@ -153,6 +244,52 @@
         "date_to"
       ],
       "title": "Chapter",
+      "type": "object"
+    },
+    "CoverSize": {
+      "description": "The cover as the printer's cover calculator gives it: the whole width and height (bleed or\nwrap included) and the spine, plus the margin all round that is cut off (softcover) or folded\naround the board (hardcover).",
+      "properties": {
+        "binding": {
+          "default": "hardcover",
+          "enum": [
+            "hardcover",
+            "softcover"
+          ],
+          "title": "Binding",
+          "type": "string"
+        },
+        "width_mm": {
+          "exclusiveMaximum": 3000,
+          "exclusiveMinimum": 0,
+          "title": "Width Mm",
+          "type": "number"
+        },
+        "height_mm": {
+          "exclusiveMaximum": 1500,
+          "exclusiveMinimum": 0,
+          "title": "Height Mm",
+          "type": "number"
+        },
+        "spine_mm": {
+          "exclusiveMaximum": 200,
+          "minimum": 0,
+          "title": "Spine Mm",
+          "type": "number"
+        },
+        "margin_mm": {
+          "maximum": 40,
+          "minimum": 0,
+          "title": "Margin Mm",
+          "type": "number"
+        }
+      },
+      "required": [
+        "width_mm",
+        "height_mm",
+        "spine_mm",
+        "margin_mm"
+      ],
+      "title": "CoverSize",
       "type": "object"
     },
     "Divider": {
@@ -273,6 +410,21 @@
           ],
           "default": null,
           "title": "Dup Group"
+        },
+        "by_user": {
+          "default": false,
+          "title": "By User",
+          "type": "boolean"
+        },
+        "layout": {
+          "default": "normal",
+          "enum": [
+            "normal",
+            "page",
+            "spread"
+          ],
+          "title": "Layout",
+          "type": "string"
         }
       },
       "required": [

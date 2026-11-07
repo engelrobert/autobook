@@ -1,0 +1,31 @@
+description = "epubli Bildband (30 x 29.4 cm), hardcover only (250 g photo paper). The cover size comes from epubli's cover calculator."
+printer = "epubli"
+page_width_mm = 300
+page_height_mm = 294
+bleed_mm = 3
+margin_mm = 0
+gap_mm = 5
+dpi = 300
+photos_per_page_max = 6
+
+[cover]
+enabled = true
+mode = "front-full"
+sizes = "typed"  # typed in from epubli's cover calculator in the Print step; until then the estimate below
+calculator = "https://www.epubli.de/preise"
+bindings = ["hardcover"]
+margin_hardcover_mm = 11  # folded around the board (epubli's guide; the calculator has the exact value)
+margin_softcover_mm = 3  # cut off
+front_back_width_mm = 600  # estimate: back + front
+height_mm = 294
+bleed_mm = 3
+spine_mm_per_10_pages = 1.0
+
+[print]
+page_count_min = 36
+page_count_max = 980
+page_count_step = 2
+separate_files = true  # inner pages and cover are uploaded on their own
+cover_jpg = true  # epubli asks for the cover as a JPG
+transparency = false  # "transparent parts may come out unexpectedly or not at all"
+max_file_mb = 250  # epubli's upload limit

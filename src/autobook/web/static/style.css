@@ -517,6 +517,11 @@ button.lb-sib:hover { border-color: #fff; }
 .how li::before { content: counter(how); position: absolute; left: 0; top: -4px; width: 40px; height: 40px; border-radius: 999px;
   background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; font: 600 22px var(--serif); }
 .how strong { font-size: 18px; }
+.q > .seg { align-self: flex-start; }
+.cover-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+.num-input { min-height: 48px; width: 100%; max-width: 220px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 12px;
+  background: var(--white); color: var(--ink); font: 500 17px var(--sans); }
+#cover-size { scroll-margin-top: 90px; }
 
 /* the app: OpenAI key dialog, update notice */
 .modal-back { position: fixed; inset: 0; z-index: 65; display: flex; align-items: center; justify-content: center; padding: 16px;

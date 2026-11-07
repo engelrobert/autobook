@@ -354,10 +354,16 @@ def create_app(library: Path, token: str, *, ai_factory: Callable | None = None,
                 "version": updater.status()["current"], "updates": updater.enabled,
                 "swatches": [{"key": k, "bg": v, "ink": ink_for(v)} for k, v in SWATCHES.items()],
                 "frames": list(FRAME_MM),
-                "profiles": [{"name": n, "description": prof.description,
+                "profiles": [{"name": n, "description": prof.description, "printer": prof.printer,
                               "width": prof.page_width_mm, "height": prof.page_height_mm,
                               "min_pages": int(prof.print.get("page_count_min", 0) or 0),
-                              "max_pages": int(prof.print.get("page_count_max", 0) or 0)}
+                              "max_pages": int(prof.print.get("page_count_max", 0) or 0),
+                              "max_file_mb": float(prof.print.get("max_file_mb", 0) or 0),
+                              "separate_files": prof.separate_files, "cover_typed": prof.cover_typed,
+                              "calculator": prof.cover.get("calculator"),
+                              "bindings": prof.cover.get("bindings", ["hardcover"]),
+                              "margins": {b: prof.cover.get(f"margin_{b}_mm", prof.bleed_mm)
+                                          for b in ("hardcover", "softcover")}}
                              for n, prof in ((n, load_profile(n)) for n in available_profiles())]}
 
     @app.get("/api/job/{jid}")
@@ -694,9 +700,23 @@ def create_app(library: Path, token: str, *, ai_factory: Callable | None = None,
             raise HTTPException(404)
         return FileResponse(p, media_type="application/pdf", filename=f"{name}{'-druck' if final else ''}.pdf")
 
+    def _print_files(work: Work) -> list[Path]:
+        return [Path(f) for f in (_read_json(work.root / RELEASE) or {}).get("files", [])]
+
+    @app.get("/api/books/{name}/print-file/{i}")
+    def print_file(name: str, i: int, _=Depends(auth)):
+        """One of the files to upload to the printer (the inner pages, the cover)."""
+        files = _print_files(book(name))
+        if not 0 <= i < len(files) or not files[i].exists():
+            raise HTTPException(404)
+        f = files[i]
+        return FileResponse(f, media_type="application/pdf" if f.suffix == ".pdf" else "image/jpeg", filename=f.name)
+
     @app.post("/api/books/{name}/open-folder")
     def open_folder(name: str, _=Depends(auth)):
-        folder = _project(book(name))
+        work = book(name)
+        files = [f for f in _print_files(work) if f.exists()]
+        folder = files[0].parent if files else _project(work)  # where the files to upload are
         if sys.platform == "win32":
             os.startfile(folder)  # noqa: S606 - local folder of this book
         else:

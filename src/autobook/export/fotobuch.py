@@ -38,7 +38,7 @@ from autobook.export.profile import Profile, load_profile
 from autobook.export.style import FRAME_MM, OPENER_PREFIX, paint, rgb
 from autobook.i18n import format_range
 from autobook.plan.models import BookPlan, Chapter, PlanPhoto
-from autobook.render.pages import hero_crop, page_pixels, plain_background, spread_halves
+from autobook.render.pages import COVER_SCRIM, OPENER_SHADE, hero_crop, page_pixels, plain_background, spread_halves
 from autobook.settings import Work, fotobuch_bin
 from autobook.thumbs import open_upright
 
@@ -46,6 +46,7 @@ PROJECT = "book"
 COVER_GROUP = "00_cover"
 GEN_GROUP = "zz_autobook"
 COVER_SORT_KEY = "1900-01-01T00:00:00+00:00"
+SPINE_CLEARANCE_MM = 5.0  # between the spine and the front cover photo
 GEN_SORT_KEY = "2999-12-31T00:00:00+00:00"
 FOTOBUCH_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff"}
 # an update that changes more photos than this re-lays the book out, if nobody edited it in Fotobuch
@@ -141,17 +142,44 @@ def link_or_copy(src: Path, dst: Path) -> None:
         shutil.copy2(src, dst)
 
 
-def replace_cover(work: Work, cover_fid: str, src: Path) -> None:
-    """Put another photo under the staged cover file name (converted to its format if needed)."""
-    dst = work.staging / cover_fid
-    tmp = dst.with_name(dst.stem + ".new" + dst.suffix)
-    if src.suffix.lower() == dst.suffix.lower():
-        shutil.copy2(src, tmp)
-    else:
-        im = open_upright(src)
-        im.save(tmp, "JPEG" if dst.suffix.lower() in (".jpg", ".jpeg") else None, quality=95,
-                icc_profile=im.info.get("icc_profile"))
-    os.replace(tmp, dst)  # also breaks a hard link to the old original instead of overwriting it
+def cover_config(profile: Profile, plan: BookPlan) -> dict:
+    """Fotobuch's cover settings. From the sizes typed in from the printer's cover calculator: the
+    margin all round becomes the cover's bleed and the spine is fixed. Else the profile's estimate."""
+    c = profile.cover
+    size = plan.book.cover_size if profile.cover_typed else None
+    if size:
+        return {"front_back_width_mm": size.width_mm - 2 * size.margin_mm,
+                "height_mm": size.height_mm - 2 * size.margin_mm, "bleed_mm": size.margin_mm,
+                "spine_mode": "fixed", "spine_width_mm": size.spine_mm, "spine_clearance_mm": SPINE_CLEARANCE_MM}
+    return {"front_back_width_mm": float(c["front_back_width_mm"]), "height_mm": float(c["height_mm"]),
+            "bleed_mm": float(c.get("bleed_mm", profile.bleed_mm)), "spine_mode": "auto",
+            "spine_mm_per_10_pages": float(c.get("spine_mm_per_10_pages", 1.0)),
+            "spine_clearance_mm": SPINE_CLEARANCE_MM}
+
+
+def cover_photo_px(cfg: dict, dpi: float) -> tuple[int, int]:
+    """Pixels of the front cover photo as the template draws it: Fotobuch's slot (from the spine's
+    clearance to the outer edge) and the bleed on its three outer sides."""
+    spine = cfg["spine_width_mm"] / 2 if cfg["spine_mode"] == "fixed" else 0.0  # auto: the spine starts at the middle
+    w = cfg["front_back_width_mm"] / 2 - spine - cfg["spine_clearance_mm"] + cfg["bleed_mm"]
+    h = cfg["height_mm"] + 2 * cfg["bleed_mm"]
+    return round(w / 25.4 * dpi), round(h / 25.4 * dpi)
+
+
+def stage_cover(plan: BookPlan, work: Work, cat: Catalog, size: tuple[int, int], name: str = "cover.jpg") -> dict:
+    """The front cover photo, cut to its place on the cover (your cut or the faces kept in view) and
+    darker at the top under the white title. Returns the cover info for the manifest."""
+    from autobook.ai.focus import known_focus
+
+    row = cat.photo(plan.book.cover_photo) if plan.book.cover_photo else None
+    if not row:
+        return {}
+    dst = work.staging / COVER_GROUP / name
+    tmp = dst.with_name("new-" + name)
+    hero_crop(row["path"], tmp, size, plan.book.crops.get(plan.book.cover_photo),
+              known_focus(cat).get(plan.book.cover_photo), COVER_SCRIM, top=True)
+    os.replace(tmp, dst)  # also breaks a hard link to an original instead of writing through it
+    return {"plan_id": plan.book.cover_photo, "fid": f"{COVER_GROUP}/{name}"}
 
 
 def source_regex(group: str, filename: str) -> str:
@@ -269,7 +297,7 @@ def render_generated(plan: BookPlan, work: Work, profile: Profile, cat: Catalog,
         try:
             if style == "hero" and ch.divider.photo and cat.photo(ch.divider.photo):
                 hero_crop(cat.photo(ch.divider.photo)["path"], dst, px, plan.book.crops.get(ch.divider.photo),
-                          focus.get(ch.divider.photo))
+                          focus.get(ch.divider.photo), OPENER_SHADE)
             else:
                 style = "plain"
                 plain_background(dst, px, paper)
@@ -300,28 +328,18 @@ def page_fills(plan: BookPlan, photos: dict[str, dict]) -> dict[str, dict[str, s
     return fills
 
 
-def photo_crops(plan: BookPlan, photos: dict[str, dict], cover_fid: str | None) -> dict[str, list[float]]:
-    """Fotobuch photo id -> where the template cuts it (chapter photos and the cover)."""
-    crops = {}
-    for pid, (x, y) in plan.book.crops.items():
-        if pid in photos:
-            crops[photos[pid]["fid"]] = [round(x, 4), round(y, 4)]
-        elif pid == plan.book.cover_photo and cover_fid:
-            crops[cover_fid] = [round(x, 4), round(y, 4)]
-    return crops
+def photo_crops(plan: BookPlan, photos: dict[str, dict]) -> dict[str, list[float]]:
+    """Fotobuch photo id -> where the template cuts it (the cover photo is staged already cut)."""
+    return {photos[pid]["fid"]: [round(x, 4), round(y, 4)] for pid, (x, y) in plan.book.crops.items() if pid in photos}
 
 
-def photo_focus(plan: BookPlan, photos: dict[str, dict], cover_fid: str | None,
-                focus: dict[str, tuple[float, float]]) -> dict[str, list[float]]:
+def photo_focus(photos: dict[str, dict], focus: dict[str, tuple[float, float]]) -> dict[str, list[float]]:
     """Fotobuch photo id -> where the faces are (0..1 of the photo), for photos without your own cut."""
-    out = {photos[pid]["fid"]: list(xy) for pid, xy in focus.items() if pid in photos}
-    if cover_fid and plan.book.cover_photo in focus:
-        out[cover_fid] = list(focus[plan.book.cover_photo])
-    return out
+    return {photos[pid]["fid"]: list(xy) for pid, xy in focus.items() if pid in photos}
 
 
 def write_sidecar(project_dir: Path, plan: BookPlan, gen: Generated, extra_end: list[str] | None = None,
-                  photos: dict[str, dict] | None = None, cover_fid: str | None = None,
+                  photos: dict[str, dict] | None = None,
                   focus: dict[str, tuple[float, float]] | None = None) -> None:
     fid = lambda name: f"{GEN_GROUP}/{name}"  # noqa: E731
     dividers = {fid(n): {k: v for k, v in info.items() if k != "kind"}
@@ -335,8 +353,8 @@ def write_sidecar(project_dir: Path, plan: BookPlan, gen: Generated, extra_end: 
         "frame_mm": FRAME_MM[plan.book.frame],
         "paper": paint(plan.book.background),
         "fills": page_fills(plan, photos or {}),
-        "crops": photo_crops(plan, photos or {}, cover_fid),
-        "focus": photo_focus(plan, photos or {}, cover_fid, focus or {}),
+        "crops": photo_crops(plan, photos or {}),
+        "focus": photo_focus(photos or {}, focus or {}),
         "cover": {"title": plan.book.title, "subtitle": plan.book.subtitle, "dates": dates,
                   "back_text": f"{plan.book.title} · {dates}", "scrim": True},
         "dividers": dividers,
@@ -403,21 +421,35 @@ def export(plan: BookPlan, work: Work, profile: Profile | str | None = None, *, 
     profile = load_profile(profile or plan.book.profile) if not isinstance(profile, Profile) else profile
     fb = fb or Fotobuch()
     project_dir = work.project_parent / PROJECT
+    note = None
     if project_dir.exists() and not fresh:
-        return _update(plan, work, profile, fb, project_dir, progress, guides)
+        before = (json.loads(work.manifest.read_text(encoding="utf-8")) if work.manifest.exists() else {}).get("profile")
+        if not before or before == profile.name or _same_pages(before, profile):
+            return _update(plan, work, profile, fb, project_dir, progress, guides)
+        note = f"new format ({before} -> {profile.name}): laid out from scratch"  # nothing of the old pages fits
     if project_dir.exists():
         if not (project_dir / f"{PROJECT}.yaml").exists():
             raise ExportConflict(f"{project_dir} exists but is not an autobook/Fotobuch project; not deleting it")
         remove_project(project_dir)
-    return _fresh(plan, work, profile, fb, project_dir, progress, bool(guides))
+    r = _fresh(plan, work, profile, fb, project_dir, progress, bool(guides))
+    if note:
+        r.warnings.insert(0, note)
+    return r
+
+
+def _same_pages(name: str, profile: Profile) -> bool:
+    try:
+        return load_profile(name).same_pages(profile)
+    except ValueError:  # a profile file that is gone
+        return False
 
 
 def _guide_settings(on: bool) -> dict[str, bool]:
     return {"preview.show_preview_watermark": on, "preview.show_borders": on}
 
 
-def _stage(plan: BookPlan, work: Work, cat: Catalog) -> tuple[dict, dict[str, str], dict]:
-    """Stage chapter files. Returns (photos manifest, chapter id -> group, cover info)."""
+def _stage(plan: BookPlan, work: Work) -> tuple[dict, dict[str, str]]:
+    """Stage chapter files. Returns (photos manifest, chapter id -> group)."""
     groups = {ch.id: chapter_group(i, ch) for i, ch in enumerate(plan.chapters, 1)}
     photos: dict[str, dict] = {}
     for ch in plan.chapters:
@@ -433,16 +465,7 @@ def _stage(plan: BookPlan, work: Work, cat: Catalog) -> tuple[dict, dict[str, st
             link_or_copy(Path(p.path), work.staging / g / name)
             photos[p.id] = {"fid": f"{g}/{name}", "group": g, "file": name, "chapter": ch.id,
                             "weight": p.weight}
-    cover = {}
-    if plan.book.cover_photo and cat.photo(plan.book.cover_photo):
-        src = Path(cat.photo(plan.book.cover_photo)["path"])
-        name = "cover" + (src.suffix.lower() if src.suffix.lower() in FOTOBUCH_EXTS else ".jpg")
-        cdir = work.staging / COVER_GROUP
-        if cdir.exists():
-            shutil.rmtree(cdir)
-        link_or_copy(src, cdir / name)
-        cover = {"plan_id": plan.book.cover_photo, "fid": f"{COVER_GROUP}/{name}"}
-    return photos, groups, cover
+    return photos, groups
 
 
 def _stage_generated(gen: Generated, work: Work) -> None:
@@ -558,10 +581,9 @@ def _finish(plan, work, profile, fb, project_dir, gen, cat, warnings, photos) ->
                         "they have a little extra space on two sides")
     save_state(project_dir, data)
     install_template(project_dir)  # books laid out with an older autobook get the current one
-    cover_fid = next((str(f["id"]) for g in data["photos"] if g["group"] == COVER_GROUP for f in g["files"]), None)
     from autobook.ai.focus import known_focus
 
-    write_sidecar(project_dir, plan, gen, blanks, photos, cover_fid, known_focus(cat))
+    write_sidecar(project_dir, plan, gen, blanks, photos, known_focus(cat))
     out = fb.run(["build"], project_dir)
     # "N photo(s) but M slot(s)" is Fotobuch's normal state between `place` and `build`
     warnings += [ln.strip() for ln in out.splitlines() if "WARN" in ln and "slot(s)" not in ln]
@@ -592,17 +614,21 @@ def _fresh(plan, work, profile, fb, project_dir, progress, guides: bool) -> Expo
     warnings: list[str] = []
     try:
         progress("stage", 0, 1)
-        photos, groups, cover = _stage(plan, work, cat)
+        photos, groups = _stage(plan, work)
+        cover_cfg = cover_config(profile, plan)
+        cover = stage_cover(plan, work, cat, cover_photo_px(cover_cfg, profile.dpi)) if profile.cover_enabled else {}
         progress("render", 0, 1)
         gen = render_generated(plan, work, profile, cat, groups)
         c = profile.cover
         args = ["project", "new", PROJECT, "--width", profile.page_width_mm, "--height", profile.page_height_mm,
                 "--bleed", profile.bleed_mm, "--margin-mm", profile.margin_mm,
                 "--parent-dir", work.project_parent, "--quiet"]
-        use_cover = profile.cover_enabled and bool(cover)
+        use_cover = bool(cover)
         if use_cover:
-            args += ["--with-cover", "--cover-width", c["front_back_width_mm"], "--cover-height", c["height_mm"],
-                     "--spine-grow-per-10-pages-mm", c.get("spine_mm_per_10_pages", 1.0)]
+            args += ["--with-cover", "--cover-width", cover_cfg["front_back_width_mm"],
+                     "--cover-height", cover_cfg["height_mm"]]
+            args += (["--spine-mm", cover_cfg["spine_width_mm"]] if cover_cfg["spine_mode"] == "fixed"
+                     else ["--spine-grow-per-10-pages-mm", cover_cfg["spine_mm_per_10_pages"]])
         progress("fotobuch", 0, 4)
         fb.run(args, work.project_parent)
         install_template(project_dir)
@@ -611,7 +637,6 @@ def _fresh(plan, work, profile, fb, project_dir, progress, guides: bool) -> Expo
                                        "preview.show_slot_info": False, **_guide_settings(guides)}
         if use_cover:
             settings["book.cover.mode"] = c.get("mode", "front-full")
-            settings["book.cover.bleed_mm"] = c.get("bleed_mm", profile.bleed_mm)
         settings.update(solver_settings(plan, profile))
         for k, v in settings.items():
             fb.run(["config", "set", k, str(v).lower() if isinstance(v, bool) else str(v)], project_dir)
@@ -622,6 +647,7 @@ def _fresh(plan, work, profile, fb, project_dir, progress, guides: bool) -> Expo
         keys = _sort_keys(plan, groups)
         if use_cover:
             keys[COVER_GROUP] = COVER_SORT_KEY
+            data["config"]["book"]["cover"].update(cover_cfg)
         apply_order_and_weights(data, keys, {v["fid"]: v["weight"] for v in photos.values()})
         data["config"]["book"]["title"] = str(plan.book.title)  # spine text; YAML keeps it a string
         save_state(project_dir, data)
@@ -652,7 +678,7 @@ def _update(plan, work, profile, fb, project_dir, progress, guides: bool | None 
     if [c["id"] for c in old["chapters"]] != [c.id for c in plan.chapters]:
         raise ExportConflict("the chapter structure changed; re-export with --fresh "
                              "(manual layout edits in Fotobuch will be lost)")
-    if old.get("profile") != profile.name:
+    if old.get("profile") != profile.name and not _same_pages(old.get("profile", ""), profile):
         raise ExportConflict(f"profile changed ({old.get('profile')} -> {profile.name}); use --fresh")
     cover_changed = old.get("cover", {}).get("plan_id") != plan.book.cover_photo
     if cover_changed and not (old.get("cover") and plan.book.cover_photo):
@@ -671,14 +697,24 @@ def _update(plan, work, profile, fb, project_dir, progress, guides: bool | None 
     groups = {c["id"]: c["group"] for c in old["chapters"]}
     data = load_state(project_dir)
     to_auto(data)  # our evenly filled pages are Manual pages; Fotobuch may only place photos on Auto ones
+    cover_cfg = cover_config(profile, plan)
+    book_cfg = data["config"]["book"]
+    book_cfg.update(gap_mm=profile.gap_mm, dpi=profile.dpi)  # the same pages may come from another printer's profile
+    if (book_cfg.get("cover") or {}).get("active"):
+        book_cfg["cover"].update(cover_cfg)  # `build` lays the cover out again when its size changed
     save_state(project_dir, data)
+    old["profile"] = profile.name
     cat = Catalog(work.catalog)
     warnings: list[str] = []
-    if cover_changed:  # same file name, new content: Fotobuch re-reads it and keeps the cover layout
-        replace_cover(work, old["cover"]["fid"], Path(cat.photo(plan.book.cover_photo)["path"]))
-        fb.run(["add", "--update", work.staging / COVER_GROUP], project_dir)
-        old["cover"]["plan_id"] = plan.book.cover_photo
-        warnings.append("cover photo replaced")
+    if old.get("cover"):  # same file name, new content: Fotobuch re-reads it and keeps the cover layout
+        staged = work.staging / old["cover"]["fid"]
+        before = staged.read_bytes() if staged.exists() else None
+        stage_cover(plan, work, cat, cover_photo_px(cover_cfg, profile.dpi), staged.name)
+        if staged.read_bytes() != before:
+            fb.run(["add", "--update", work.staging / COVER_GROUP], project_dir)
+        if cover_changed:
+            old["cover"]["plan_id"] = plan.book.cover_photo
+            warnings.append("cover photo replaced")
     try:
         old_photos: dict[str, dict] = old["photos"]
         # a photo moved to another chapter leaves its old chapter's group and comes back in the new one

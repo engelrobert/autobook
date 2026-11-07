@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class Scores(BaseModel):
@@ -70,6 +70,23 @@ class Rejected(BaseModel):
     reason: str  # blur | near_dup:<id> | not_selected | excluded_event | screenshot
 
 
+class CoverSize(BaseModel):
+    """The cover as the printer's cover calculator gives it: the whole width and height (bleed or
+    wrap included) and the spine, plus the margin all round that is cut off (softcover) or folded
+    around the board (hardcover)."""
+    binding: Literal["hardcover", "softcover"] = "hardcover"
+    width_mm: float = Field(gt=0, lt=3000)
+    height_mm: float = Field(gt=0, lt=1500)
+    spine_mm: float = Field(ge=0, lt=200)
+    margin_mm: float = Field(ge=0, le=40)
+
+    @model_validator(mode="after")
+    def _room_left(self):
+        if self.width_mm - 2 * self.margin_mm - self.spine_mm <= 0 or self.height_mm - 2 * self.margin_mm <= 0:
+            raise ValueError("the margin and spine leave no cover")
+        return self
+
+
 class BookMeta(BaseModel):
     title: str
     subtitle: str = ""
@@ -88,6 +105,7 @@ class BookMeta(BaseModel):
     # where a trimmed photo is cut: photo id -> (x, y), 0 keeps the left/top edge, 1 the right/bottom one
     crops: dict[str, tuple[float, float]] = {}
     auto_fit: bool = True  # a book too short for the printer gets more photos instead of blank pages
+    cover_size: CoverSize | None = None  # from the printer's cover calculator (profiles with typed cover sizes)
 
     @field_validator("crops")
     @classmethod
