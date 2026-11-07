@@ -225,9 +225,13 @@ The browser app bundles the fonts Newsreader and Inter (SIL Open Font License, t
 2. Commit, then tag and push: `git tag v0.2.1 && git push origin main v0.2.1`.
 3. `.github/workflows/release.yml` runs on GitHub's Windows machine: tests, builds the app with
    PyInstaller (`packaging/windows/autobook.spec`, with Fotobuch from `get_fotobuch.ps1`), tries the
-   built app on demo photos, then makes the installer and the update files with
-   [Velopack](https://docs.velopack.io) and publishes them as the GitHub release. Installed apps find it
-   at their next start.
+   built app on demo photos and starts its browser app, then makes the installer and the update files
+   with [Velopack](https://docs.velopack.io) and puts them into a **draft** release.
+4. On GitHub (Releases), try the draft's `autobook-win-Setup.exe`, then press "Publish release".
+   Installed apps find the new version at their next start; nothing reaches them before that.
+
+A test build without a release: Actions → release → "Run workflow". Its `Setup.exe` is attached to the
+run as a download.
 
 The installer is not signed; signing (e.g. Azure Trusted Signing) can be added to the `vpk pack` step
 later without changing anything for installed apps.

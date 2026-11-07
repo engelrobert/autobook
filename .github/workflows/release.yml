@@ -1,10 +1,14 @@
 name: release
 
-# A version tag (v0.2.0, matching pyproject.toml) builds, tests and publishes the Windows app:
-#   Setup.exe for new installs, plus the Velopack update files the installed apps fetch.
+# A version tag (v0.2.0, matching pyproject.toml) builds and tests the Windows app and puts it into a
+# draft GitHub release: Setup.exe for new installs, plus the Velopack update files the installed apps
+# fetch. Nothing reaches anyone until "Publish release" is pressed on GitHub.
+# "Run workflow" (Actions tab, any branch) makes the same build and tests without a release; its
+# Setup.exe is attached to the run as a download.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write  # create the GitHub release and upload its files
@@ -21,12 +25,13 @@ jobs:
 
       - uses: astral-sh/setup-uv@v6
 
-      - name: Version from the tag
+      - name: Version
         shell: pwsh
         run: |
-          $ver = "${{ github.ref_name }}".TrimStart("v")
-          $proj = (Select-String -Path pyproject.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
-          if ($ver -ne $proj) { throw "tag $ver does not match the version in pyproject.toml ($proj)" }
+          $ver = (Select-String -Path pyproject.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}".TrimStart("v") -ne $ver) {
+            throw "tag ${{ github.ref_name }} does not match the version in pyproject.toml ($ver)"
+          }
           "VERSION=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Fotobuch
@@ -41,6 +46,7 @@ jobs:
       - name: Build the app (PyInstaller)
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true  # a failing program stops the step
           # where the installed app looks for updates
           Set-Content -Encoding utf8 src/autobook/_build.py `
             "UPDATE_FEED = `"https://github.com/${{ github.repository }}/releases/latest/download`""
@@ -52,13 +58,26 @@ jobs:
       - name: Smoke test of the built app (bundled Fotobuch, no Python)
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           Remove-Item Env:FOTOBUCH_BIN
+          $env:AUTOBOOK_LIBRARY = "$env:RUNNER_TEMP\library"
           $app = "dist/autobook/autobook-cli.exe"
           & $app doctor
           & $app demo-photos "$env:RUNNER_TEMP\demo" --scale 0.4 --long-edge 1200
           & $app all "$env:RUNNER_TEMP\demo" --work "$env:RUNNER_TEMP\book" --offline
           & $app release --work "$env:RUNNER_TEMP\book"
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          # the browser app starts and answers
+          $ui = Start-Process -FilePath $app -ArgumentList "ui", "--no-browser", "--port", "8790" -PassThru -NoNewWindow
+          try {
+            $ok = $false
+            for ($i = 0; $i -lt 60 -and -not $ok; $i++) {
+              Start-Sleep -Seconds 1
+              try { $ok = (Invoke-RestMethod http://127.0.0.1:8790/api/ping).app -eq "autobook" } catch { }
+            }
+            if (-not $ok) { throw "autobook ui did not answer on port 8790" }
+          } finally {
+            Stop-Process -Id $ui.Id -Force
+          }
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -70,13 +89,29 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           dotnet tool install -g vpk --version $env:VPK_VERSION
-          $repo = "https://github.com/${{ github.repository }}"
-          # the previous release, so the installed apps get a small delta update
-          vpk download github --repoUrl $repo --token $env:GH_TOKEN --outputDir releases
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          # the latest published release, so the installed apps get a small delta update
+          vpk download github --repoUrl "https://github.com/${{ github.repository }}" --token $env:GH_TOKEN --outputDir releases
           if ($LASTEXITCODE) { Write-Host "no earlier release to build a delta from" }
           vpk pack --packId autobook --packVersion $env:VERSION --packDir dist/autobook --mainExe autobook.exe `
             --packTitle autobook --icon packaging/windows/autobook.ico --outputDir releases
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          vpk upload github --repoUrl $repo --token $env:GH_TOKEN --outputDir releases --publish `
-            --releaseName "autobook $env:VERSION" --tag "${{ github.ref_name }}" --merge
+          Get-ChildItem releases | Format-Table Name, Length
+
+      - name: Draft release (publish it on GitHub after a look)
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          vpk upload github --repoUrl "https://github.com/${{ github.repository }}" --token $env:GH_TOKEN `
+            --outputDir releases --releaseName "autobook $env:VERSION" --tag "${{ github.ref_name }}" --merge
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: Installer of a test build
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: autobook-${{ env.VERSION }}-test-setup
+          path: releases/*Setup.exe
+          if-no-files-found: error
