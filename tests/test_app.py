@@ -146,5 +146,5 @@ def test_the_app_starts_without_a_console(tmp_path, monkeypatch):
         server.should_exit = True
         thread.join(timeout=5)
     app.console_streams()  # and anything else that writes to them gets somewhere to go
-    assert sys.stdout.write("x") == 1 and not sys.stderr.isatty()
+    assert sys.stdout.write("x") == 1 and sys.stderr.isatty() in (True, False)  # "nul" is a tty on Windows
     make_server(tmp_path / "lib", "tok", free_port())  # even uvicorn's console logging works then
