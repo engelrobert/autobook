@@ -124,6 +124,27 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           Get-ChildItem releases | Format-Table Name, Length
 
+      - name: Installed app finds its updates
+        shell: pwsh
+        run: |
+          # install like a user would, then ask the installed copy for updates (Velopack's real path)
+          $setup = Start-Process -FilePath (Resolve-Path releases/autobook-win-Setup.exe) -ArgumentList "--silent" -PassThru -Wait
+          Write-Host "Setup exit code: $($setup.ExitCode)"
+          $cli = "$env:LOCALAPPDATA\autobook\current\autobook-cli.exe"
+          for ($i = 0; $i -lt 60 -and -not (Test-Path $cli); $i++) { Start-Sleep -Seconds 1 }
+          if (-not (Test-Path $cli)) {
+            Get-ChildItem "$env:LOCALAPPDATA\autobook" -Depth 1 -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
+            throw "autobook was not installed at $cli"
+          }
+          & $cli update-check
+          $code = $LASTEXITCODE
+          Get-Process autobook -ErrorAction SilentlyContinue | Stop-Process -Force  # the app setup started
+          if ($code) {
+            Get-ChildItem "$env:LOCALAPPDATA\autobook" -Recurse -Filter *.log -ErrorAction SilentlyContinue |
+              ForEach-Object { Write-Host "== $($_.FullName)"; Get-Content $_ -Tail 60 }
+            exit $code
+          }
+
       - name: Draft release (publish it on GitHub after a look)
         if: github.ref_type == 'tag'
         shell: pwsh

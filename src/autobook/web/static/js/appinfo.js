@@ -66,15 +66,23 @@ export function keyDialog() {
 
 // "Version X ist da – jetzt aktualisieren" under the header (installed app only)
 let shownFor = null;
+let waiting = false;
 export async function updateNotice() {
-  if (!G.updates) return;
+  if (!G.updates || waiting) return;
   let st;
-  try {
-    st = await api("GET", "/api/update");
+  waiting = true;
+  try {  // the check runs in the background at start: ask again until it has finished (up to a minute)
+    for (let i = 0; i < 20; i++) {
+      st = await api("GET", "/api/update");
+      if (st.checked) break;
+      await new Promise(r => setTimeout(r, 3000));
+    }
   } catch {
     return;
+  } finally {
+    waiting = false;
   }
-  if (!st.available || shownFor === st.version) return;
+  if (!st.available || shownFor === st.version || document.querySelector(".update-bar")) return;
   shownFor = st.version;
   const body = el("span", { class: "grow" }, t("update.available", { v: st.version }));
   const go = el("button", { class: "btn primary" }, icon("next", 20), t("update.now"));

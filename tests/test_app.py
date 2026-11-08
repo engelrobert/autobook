@@ -171,3 +171,23 @@ def test_fotobuch_runs_without_a_console_window(tmp_path, monkeypatch):
     monkeypatch.setattr(subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
     Fotobuch(binary="fotobuch.exe").run(["--version"], tmp_path)
     assert seen["creationflags"] == 0x08000000
+
+
+class BrokenManager:
+    def check_for_updates(self):
+        raise OSError("feed not reachable")
+
+
+def test_a_failed_update_check_says_so(monkeypatch):
+    """0.2.1's tray said "up to date" when the check had failed; the reason was only in the log."""
+    monkeypatch.setattr(app, "lang", lambda: "de")
+    up = Updater(manager=BrokenManager())
+    assert up.status()["checked"] is False
+    st = up.check()
+    assert st["checked"] and not st["available"] and st["error"] == "OSError: feed not reachable"
+    tray = FakeTray()
+    app.tray("u", SimpleNamespace(should_exit=False), up, pystray=tray)
+    {i.text: i for i in tray.icon.menu}["Nach Updates suchen"].action(tray.icon, None)
+    assert tray.notes == ["Die Suche nach Updates hat nicht geklappt: OSError: feed not reachable"]
+    ok = Updater(manager=FakeManager("9.9.9")).check()  # a later good check clears the error
+    assert ok["checked"] and ok["available"] and ok["error"] is None and ok["version"] == "9.9.9"

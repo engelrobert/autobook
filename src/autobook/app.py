@@ -23,9 +23,11 @@ from pathlib import Path
 PORT = 8765  # the usual address; another free port when it is taken
 TEXTS = {
     "de": {"open": "autobook öffnen", "check": "Nach Updates suchen", "quit": "Beenden",
-           "current": "autobook ist auf dem neuesten Stand.", "update": "Eine neue Version ist da: {v}"},
+           "current": "autobook ist auf dem neuesten Stand.", "update": "Eine neue Version ist da: {v}",
+           "failed": "Die Suche nach Updates hat nicht geklappt: {e}"},
     "en": {"open": "Open autobook", "check": "Check for updates", "quit": "Quit",
-           "current": "autobook is up to date.", "update": "A new version is available: {v}"},
+           "current": "autobook is up to date.", "update": "A new version is available: {v}",
+           "failed": "Checking for updates did not work: {e}"},
 }
 log = logging.getLogger("autobook.app")
 
@@ -110,7 +112,9 @@ def tray(url: str, server, updater, pystray=None) -> None:
 
     def check(icon, item):
         st = updater.check()
-        if st["available"]:
+        if st["error"]:  # never "up to date" when the check did not work
+            icon.notify(t["failed"].format(e=st["error"][:180]), "autobook")
+        elif st["available"]:
             icon.notify(t["update"].format(v=st["version"]), "autobook")
             webbrowser.open(url)  # the page shows the update notice
         else:
@@ -121,7 +125,7 @@ def tray(url: str, server, updater, pystray=None) -> None:
         icon.stop()
 
     items = [pystray.MenuItem(t["open"], open_app, default=True)]
-    if updater.enabled:
+    if updater.enabled or updater.status()["error"]:  # also when updates could not be set up: it says why
         items.append(pystray.MenuItem(t["check"], check))
     items.append(pystray.MenuItem(t["quit"], quit_app))
     pystray.Icon("autobook", draw_icon(64), "autobook", pystray.Menu(*items)).run()

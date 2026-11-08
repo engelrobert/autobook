@@ -17,6 +17,7 @@ import string
 import subprocess
 import sys
 import threading
+import time
 from collections.abc import Callable
 from importlib import resources
 from pathlib import Path
@@ -44,6 +45,7 @@ PID = re.compile(r"^p[0-9a-f]{15}$")
 BAD_NAME = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 COOKIE = "autobook_token"
 REGISTRY = "books.json"  # in the library: extra work directories outside it
+UPDATE_EVERY_S = 6 * 3600  # how often the running app looks for a new version
 RELEASE = "release.json"  # in a work dir: the last print-file check (written by export.release.release)
 QUESTIONS_META = "questions_meta.json"  # language of the saved questions, and whether the AI wrote them
 STATIC = re.compile(r"^(?:[a-z0-9_-]+/){0,2}[a-z0-9_.-]+\.(js|css|json|woff2|svg)$")
@@ -257,8 +259,13 @@ def create_app(library: Path, token: str, *, ai_factory: Callable | None = None,
     def ai_for(work: Work, effort: str):
         return ai_factory(work, effort) if ai_ready() else None
 
-    if updater.enabled:  # look for a newer version once, in the background
-        threading.Thread(target=updater.check, daemon=True, name="autobook-update-check").start()
+    def check_now_and_then():  # at start, then every 6 hours (autobook may run for days in the tray)
+        while True:
+            updater.check()
+            time.sleep(UPDATE_EVERY_S)
+
+    if updater.enabled:
+        threading.Thread(target=check_now_and_then, daemon=True, name="autobook-update-check").start()
 
     # ── app: alive check, OpenAI key, updates ────────────────────────────
     @app.get("/api/ping")
@@ -351,7 +358,7 @@ def create_app(library: Path, token: str, *, ai_factory: Callable | None = None,
 
         return {"books": [{**book_info(n, w), "job": running_job(n)} for n, w in list_books(library).items()],
                 "library": str(library), "ai_available": ai_ready(),
-                "version": updater.status()["current"], "updates": updater.enabled,
+                "version": updater.status()["current"], "updates": updater.enabled or bool(updater.status()["feed"]),
                 "swatches": [{"key": k, "bg": v, "ink": ink_for(v)} for k, v in SWATCHES.items()],
                 "frames": list(FRAME_MM),
                 "profiles": [{"name": n, "description": prof.description, "printer": prof.printer,

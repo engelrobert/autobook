@@ -4,7 +4,7 @@
 
 import { G, api, bookApi, bookUrl, loadBook } from "./api.js";
 import { keyDialog, updateNotice } from "./appinfo.js";
-import { closePopups, el, icon, popup, show } from "./dom.js";
+import { closePopups, el, icon, popup, show, toast } from "./dom.js";
 import { LANGS, getLang, initI18n, setLang, t } from "./i18n.js";
 import { books } from "./screens/books.js";
 import { newBook } from "./screens/newbook.js";
@@ -105,10 +105,24 @@ function moreMenu(B) {
     { icon: "plus", label: t("books.new"), href: "#/new" },
   ];
   items.push({ divider: true }, { icon: "key", label: t("key.menu"), onclick: keyDialog },
+    G.updates && { icon: "swap", label: t("update.check"), onclick: checkUpdates },
     { note: t("update.version", { v: G.version || "?" }) });
   const btn = el("button", { class: "icon-btn", "aria-label": t("nav.more"), "aria-haspopup": "menu",
     onclick: e => { e.stopPropagation(); popup(btn, items); } }, icon("more", 22));
   return btn;
+}
+
+// "Nach Updates suchen": the answer as a note, a failed check with its reason (never "up to date")
+async function checkUpdates() {
+  toast(t("update.checking"));
+  try {
+    const st = await api("GET", "/api/update?check=1");
+    if (st.error) toast(t("update.checkFailed", { e: st.error }), { ms: 12000 });
+    else if (st.available) updateNotice();
+    else toast(t("update.upToDate", { v: st.current }));
+  } catch (e) {
+    toast(t("update.checkFailed", { e: e.message }), { ms: 12000 });
+  }
 }
 
 export function header(B = null, step = null) {

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from importlib import metadata
 
 log = logging.getLogger("autobook.update")
@@ -44,7 +45,9 @@ class Updater:
     def __init__(self, manager=None, restart=None):
         self._manager = manager
         self._info = None
-        self._status = {"enabled": False, "available": False, "version": None, "current": current_version()}
+        # checked: a check has finished; error: why the last check (or the setup) failed
+        self._status = {"enabled": False, "available": False, "version": None, "current": current_version(),
+                        "checked": False, "checked_at": None, "error": None, "feed": feed_url()}
         self._lock = threading.Lock()
         self._restart = restart  # tests replace apply_updates_and_restart
         if manager is None and feed_url():
@@ -52,8 +55,9 @@ class Updater:
                 import velopack
 
                 self._manager = velopack.UpdateManager(feed_url())
-            except Exception as e:  # not installed by Velopack (e.g. run from a build folder): no updates
-                log.info("updates off: %s", e)
+            except Exception as e:  # e.g. run from a build folder, not installed by Velopack
+                log.warning("updates off: %s: %s", type(e).__name__, e, exc_info=True)
+                self._status["error"] = f"{type(e).__name__}: {e}"
         self._status["enabled"] = self._manager is not None
 
     @property
@@ -70,13 +74,17 @@ class Updater:
         with self._lock:
             try:
                 info = self._manager.check_for_updates()
-            except Exception as e:  # offline, GitHub down, …
-                log.info("update check failed: %s", e)
+            except Exception as e:  # offline, GitHub down, … : said as it is, never as "up to date"
+                log.warning("update check failed (feed %s): %s: %s", feed_url(), type(e).__name__, e, exc_info=True)
+                self._status.update(checked=True, checked_at=time.time(), error=f"{type(e).__name__}: {e}")
                 return self.status()
             self._info = info
             target = _get(info, "target_full_release", "TargetFullRelease")
             version = _get(target, "version", "Version")
-            self._status.update(available=info is not None, version=str(version) if version else None)
+            self._status.update(available=info is not None, version=str(version) if version else None,
+                                checked=True, checked_at=time.time(), error=None)
+            log.info("update check: %s (running %s)", f"version {version} available" if info is not None
+                     else "no newer version", self._status["current"])
         return self.status()
 
     def download(self, progress=lambda done, total: None) -> None:

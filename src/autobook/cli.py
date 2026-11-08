@@ -361,6 +361,17 @@ def install_shortcut():
     typer.echo(f"App menu entry: {desktop}\n(starts `{exe} ui` in a terminal window; close it to stop autobook)")
 
 
+@app.command("update-check")
+def update_check():
+    """Look for a new version of the installed Windows app; prints the result (an error included)."""
+    from autobook.update import Updater
+
+    st = Updater().check()
+    typer.echo(json.dumps(st, indent=2))
+    if st.get("error"):
+        raise typer.Exit(1)
+
+
 @app.command()
 def doctor():
     """Check the environment: Python, fotobuch, pdfimages (optional), API key."""
