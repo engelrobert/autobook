@@ -398,3 +398,53 @@ def test_print_files_for_a_printer_that_wants_them_separate(tmp_path, work_copy)
     assert json.loads(work_copy.plan.read_text())["book"]["cover_size"]["spine_mm"] == 12
     plan["book"]["cover_size"]["margin_mm"] = 400
     assert c.post(f"/api/books/{name}/plan", json=plan, headers=H).status_code == 422
+
+
+def test_titles_suggested_again_without_changing_the_plan(tmp_path, work_copy):
+    from autobook.brief.models import Brief
+    from autobook.pipeline.select import build_plan
+
+    sdk = FakeOpenAI()
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    register_book(lib, work_copy.root)
+    build_plan(work_copy, Brief(target_photos=20, language="de")).save(work_copy.plan)
+    name = work_copy.root.name
+    before = work_copy.plan.read_text()
+    assert _app(lib).post(f"/api/books/{name}/titles", json={}, headers=H).status_code == 422  # no key: no AI
+    c = _app(lib, ai_factory=lambda work, effort: AIClient(Catalog(work.catalog), sdk_client=sdk, effort=effort))
+    r = _wait(c, c.post(f"/api/books/{name}/titles", json={"tone": "poetic"}, headers=H))
+    chapters = json.loads(before)["chapters"]
+    assert set(r["chapters"]) == {ch["id"] for ch in chapters} and r["tone"] == "poetic"
+    assert all(len(opts) == 3 and opts[0]["title"].startswith("poetic") and opts[0]["subtitle"]
+               for opts in r["chapters"].values())
+    assert [o["title"] for o in r["book"]] == ["Fake Book Title 1", "Fake Book Title 2", "Fake Book Title 3"]
+    assert work_copy.plan.read_text() == before  # only suggestions: the page applies what you pick
+    calls = len(sdk.responses.calls)
+    _wait(c, c.post(f"/api/books/{name}/titles", json={"tone": "poetic"}, headers=H))
+    assert len(sdk.responses.calls) == calls  # the same request again comes from the cache …
+    _wait(c, c.post(f"/api/books/{name}/titles", json={"tone": "poetic", "fresh": 1}, headers=H))
+    assert len(sdk.responses.calls) > calls  # … "Andere Vorschläge" asks anew
+    one = _wait(c, c.post(f"/api/books/{name}/titles", json={"tone": "plain", "chapter": chapters[1]["id"],
+                                                              "subtitles": False}, headers=H))
+    assert list(one["chapters"]) == [chapters[1]["id"]] and one["book"] == []
+    assert all(o["subtitle"] == "" for o in one["chapters"][chapters[1]["id"]])
+    asked = sdk.responses.calls[-1]["input"][0]["content"][0]["text"]
+    assert chapters[0]["title"] in asked  # the other chapters' titles, not to be repeated
+    assert c.post(f"/api/books/{name}/titles", json={"tone": "shouting"}, headers=H).status_code == 422
+
+
+def test_the_same_folder_again_opens_its_book(tmp_path, trip):
+    lib = tmp_path / "lib"
+    c = _app(lib)
+    started = c.post("/api/books", json={"folder": str(trip[0]), "name": "Portugal"}, headers=H)
+    _wait(c, started)
+    parent = c.get("/api/fs", params={"path": str(trip[0].parent)}, headers=H).json()
+    assert next(d for d in parent["dirs"] if d["path"] == str(trip[0]))["book"] == "Portugal"
+    assert c.get("/api/fs", params={"path": str(trip[0])}, headers=H).json()["book"] == "Portugal"
+    again = c.post("/api/books", json={"folder": str(trip[0]) + "/", "name": "Portugal neu"}, headers=H)
+    assert again.status_code == 409 and again.json()["detail"]["book"] == "Portugal"
+    second = c.post("/api/books", json={"folder": str(trip[0]), "name": "Portugal quer", "again": True}, headers=H)
+    assert second.status_code == 200 and second.json()["book"] == "Portugal quer"
+    _wait(c, second)
+    assert {b["name"] for b in c.get("/api/books", headers=H).json()["books"]} == {"Portugal", "Portugal quer"}

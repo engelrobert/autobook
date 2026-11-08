@@ -166,6 +166,16 @@ def folder_chapters(photos: list[dict], roots: list[str]) -> list[dict]:
     return out
 
 
+def title_inputs(chapters: list[Chapter], roots: list[str], folders_of: dict[str, list[str]] | None = None) -> list[dict]:
+    """What the AI sees of each chapter for its title: place, dates, the folder names (the strongest
+    hint) and the best photos, the chapter photo first."""
+    return [{"id": c.id, "place": c.place, "start": c.date_from, "end": c.date_to,
+             "folders": (folders_of or {}).get(c.id) or folder_hints([p.path for p in c.photos], roots),
+             "photo_ids": ([c.divider.photo] if c.divider.photo else [])
+             + [p.id for p in sorted(c.photos, key=lambda p: -p.scores.final)]}
+            for c in chapters]
+
+
 def offline_book_title(chapters: list[dict], date_from: str, language: str) -> str:
     countries = [c["country"] for c in chapters if c.get("country")]
     year = date_from[:4]
@@ -368,17 +378,12 @@ def _build(cat: Catalog, work: Work, brief: Brief, ai, profile: str, batch, prog
         from autobook.ai.titles import book_title, chapter_titles
 
         progress("titles", 0, 1)
-        ch_input = [{"id": c.id, "place": c.place, "start": c.date_from, "end": c.date_to,
-                     "folders": folders_of.get(c.id, []),
-                     "photo_ids": ([c.divider.photo] if c.divider.photo else [])
-                     + [p.id for p in sorted(c.photos, key=lambda p: -p.scores.final)]}
-                    for c in plan_chapters]
-        titles = chapter_titles(ai, work, ch_input, language=brief.language, tone=brief.title_tone,
+        titles = chapter_titles(ai, work, title_inputs(plan_chapters, roots, folders_of), language=brief.language, tone=brief.title_tone,
                                 subtitles=brief.subtitles)
         for c in plan_chapters:
             t = titles.get(c.id)
-            if t:  # chapters by folder keep the folder's name; the AI may still add a subtitle
-                c.title, c.subtitle = (c.title if by_folder else t["title"] or c.title), t.get("subtitle", "")
+            if t:  # (chapters by folder too: their folder name is the AI's strongest hint)
+                c.title, c.subtitle = t["title"] or c.title, t.get("subtitle", "")
     # cover: favourites first (best level), never a full-page chapter opener; taken off the inner pages
     # below so it is not shown twice. Candidates that fit the front panel come first.
     cover_cands = cover_candidates(selected_all or set(hero_ids), by_id, prof)

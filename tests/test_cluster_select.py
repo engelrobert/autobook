@@ -1,3 +1,4 @@
+import time
 from datetime import date, datetime, timedelta
 
 from autobook.cluster.chapters import make_chapters
@@ -140,3 +141,38 @@ def test_chapters_by_folder_from_scan_to_plan(trip, tmp_path):
     plan = build_plan(work, Brief(chaptering="folder", target_photos=24, language="de"))
     assert [c.title for c in plan.chapters] == ["Lissabon", "Porto", "Lagos"]
     assert plan.chapters[0].date_from < plan.chapters[1].date_from < plan.chapters[2].date_from
+
+    # with AI the folder chapters get titles of their own (the folder name is the AI's strongest hint) …
+    from autobook.ai.client import AIClient
+    from autobook.catalog import Catalog
+    from tests.conftest import FakeOpenAI
+
+    sdk = FakeOpenAI()
+    brief = Brief(chaptering="folder", target_photos=24, language="de")
+    with_ai = build_plan(work, brief, ai=AIClient(Catalog(work.catalog), sdk_client=sdk))
+    assert all(c.title.startswith("Days in") for c in with_ai.chapters)
+    sent = " ".join(b.get("text", "") for call in sdk.responses.calls for b in call["input"][0]["content"])
+    assert '"01 Lissabon"' in sent and '"02 Porto"' in sent
+    # … and when new titles are suggested, the folder's name is one of the choices
+    import json
+
+    from fastapi.testclient import TestClient
+
+    from autobook.web.server import create_app, register_book
+
+    with_ai.save(work.plan)
+    work.brief.write_text(brief.dump(), encoding="utf-8")
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    register_book(lib, work.root)
+    c = TestClient(create_app(lib, "tok", ai_factory=lambda w, e: AIClient(Catalog(w.catalog), sdk_client=sdk)))
+    h = {"x-autobook-token": "tok"}
+    job = c.post(f"/api/books/{work.root.name}/titles", json={"tone": "warm"}, headers=h).json()["job"]
+    for _ in range(300):
+        j = c.get(f"/api/job/{job}", headers=h).json()
+        if j["status"] != "running":
+            break
+        time.sleep(0.1)
+    assert j["status"] == "done", j.get("error")
+    assert list(j["result"]["folders"].values()) == ["Lissabon", "Porto", "Lagos"]
+    assert json.loads(work.plan.read_text())["chapters"][0]["title"].startswith("Days in")  # unchanged

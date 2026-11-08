@@ -12,8 +12,10 @@ export async function api(method, path, body) {
   });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) {
-    const err = new Error(data.detail || data.error || r.statusText);
+    const d = data.detail;
+    const err = new Error((d && typeof d === "object" ? d.message : d) || data.error || r.statusText);
     err.status = r.status;
+    err.data = d && typeof d === "object" ? d : null;
     throw err;
   }
   return data;

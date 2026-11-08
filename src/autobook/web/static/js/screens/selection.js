@@ -7,6 +7,7 @@ import { el, icon, popup, show } from "../dom.js";
 import { dateRange, shortDay, t, weekday } from "../i18n.js";
 import { onLeave } from "../main.js";
 import * as P from "../plan.js";
+import { titlesDialog } from "../titles.js";
 import { aspect, favBadge, img } from "../photos.js";
 import { bookCover } from "./books.js";
 import { photoBrowser } from "./browser.js";
@@ -96,6 +97,8 @@ function draw(B) {
         editable(plan.book.title, v => P.change(t("done.title"), p => { p.book.title = v; }), "h1", t("sel.editTitle")),
         editable(plan.book.subtitle, v => P.change(t("done.subtitle"), p => { p.book.subtitle = v; }), "p",
           t("sel.editBookSubtitle"), { allowEmpty: true, placeholder: t("sel.addSubtitle"), cls: "subtitle" }),
+        el("button", { class: "btn small ghost suggest-btn", onclick: () => titlesDialog(B) }, icon("star", 18),
+          t("titles.button")),
         el("span", { class: "muted" }, t("sel.stats", { n: total, c: t("sel.chapterCount", { n: plan.chapters.length }), p: pages }))),
       el("div", { class: "row" }, statusEl,
         el("a", { class: "btn primary big", href: bookUrl(B.name, "book") }, t("sel.next"), icon("next", 22)))),
@@ -150,8 +153,11 @@ function chapterSection(B, c) {
     el("div", { class: "ch-head" },
       el("div", { class: "col" },
         editable(c.title, v => P.change(t("done.title"), p => { P.chapterById(p, c.id).title = v; }), "h2", t("sel.editChapter")),
-        editable(c.subtitle, v => P.change(t("done.subtitle"), p => { P.chapterById(p, c.id).subtitle = v; }), "p",
-          t("sel.editSubtitle"), { allowEmpty: true, placeholder: t("sel.addSubtitle"), cls: "subtitle" }),
+        el("div", { class: "row tight" },
+          editable(c.subtitle, v => P.change(t("done.subtitle"), p => { P.chapterById(p, c.id).subtitle = v; }), "p",
+            t("sel.editSubtitle"), { allowEmpty: true, placeholder: t("sel.addSubtitle"), cls: "subtitle" }),
+          el("button", { class: "btn small ghost suggest-btn", onclick: () => titlesDialog(B, c.id),
+            title: t("titles.chapterButton") }, icon("star", 16), t("titles.chapterButton"))),
         el("div", { class: "row tight" }, el("span", { class: "muted" }, chapterDates(c)),
           el("span", { class: "stepper", role: "group", "aria-label": t("count.chapter") },
             el("button", { class: "step-btn", "aria-label": t("count.chapterFewer"), disabled: c.photos.length <= 1,

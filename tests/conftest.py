@@ -90,16 +90,27 @@ def fake_answer(params: dict) -> dict:
         sel = aliases[::-1][:k]
         return {"selected": sel, "hero": sel[0], "strong": sel[:1], "notes": "fake ranking"}
     if "chapters" in props:  # all chapter titles in one call
-        sub = "subtitle" in props["chapters"]["items"]["properties"]
+        item = props["chapters"]["items"]["properties"]
+        n = int(m.group(1)) if (m := re.search(r"Options: give (\d+)", texts[0])) else 0
+        tone = re.search(r"Tone: (\w+)", texts[0]).group(1)
+        sub = "subtitle" in (item["options"]["items"]["properties"] if n else item)
         out = []
         for t in texts:
             m = re.match(r"Chapter (\S+): place (.*?), ", t)
-            if m:
+            if m and n:  # several titles to choose from
+                out.append({"id": m.group(1), "options": [
+                    {"title": f"{tone} {m.group(2)} {i + 1}", **({"subtitle": f"{tone} line {i + 1}"} if sub else {})}
+                    for i in range(n)]})
+            elif m:
                 rec = {"id": m.group(1), "title": f"Days in {m.group(2)} and more words here"}
                 if sub:
                     rec["subtitle"] = f"A fake subtitle for {m.group(1)}"
                 out.append(rec)
         return {"chapters": out}
+    if "options" in props:  # book titles to choose from
+        n = int(re.search(r"Options: give (\d+)", texts[0]).group(1))
+        return {"options": [{"book_title": f"Fake Book Title {i + 1}", "subtitle": f"fake subtitle {i + 1}"}
+                            for i in range(n)]}
     if "book_title" in props:
         rec = {"book_title": "Fake Book Title", "cover_photo": aliases[-1]}
         if "subtitle" in props:

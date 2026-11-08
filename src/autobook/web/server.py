@@ -183,6 +183,33 @@ def folder_card(d: Path) -> dict:
             "date_from": start, "date_to": end}
 
 
+def _folder_key(path) -> str:
+    """A folder as a comparable key (resolved; case-insensitive on Windows)."""
+    p = Path(path).expanduser()
+    try:
+        p = p.resolve()
+    except OSError:
+        pass
+    return os.path.normcase(str(p))
+
+
+def book_folders(library: Path) -> dict[str, str]:
+    """Photo folder -> the book made from it, to recognise a folder that is picked again."""
+    out: dict[str, str] = {}
+    for name, work in list_books(library).items():
+        marker = work.root / ".autobook-book"
+        roots = [marker.read_text(encoding="utf-8").strip()] if marker.exists() else []
+        if not roots and work.catalog.exists():
+            cat = Catalog(work.catalog)
+            try:
+                roots = cat.kv_get("roots", [])
+            finally:
+                cat.close()
+        for r in roots:
+            out.setdefault(_folder_key(r), name)
+    return out
+
+
 def list_dir(path: Path) -> dict:
     """Sub-folders as tiles for the folder picker, and the photos directly inside this folder."""
     dirs = []
@@ -391,7 +418,12 @@ def create_app(library: Path, token: str, *, ai_factory: Callable | None = None,
         p = Path(path).expanduser()
         if not p.is_dir():
             raise HTTPException(404, "not a folder")
-        return list_dir(p)
+        out = list_dir(p)
+        made = book_folders(library)  # folders that already have a book say so
+        out["book"] = made.get(_folder_key(p))
+        for d in out["dirs"]:
+            d["book"] = made.get(_folder_key(d["path"]))
+        return out
 
     @app.get("/api/fs/preview")
     def fs_preview(path: str, _=Depends(auth)):
@@ -413,6 +445,9 @@ def create_app(library: Path, token: str, *, ai_factory: Callable | None = None,
         folder = Path(str(body.get("folder", ""))).expanduser()
         if not folder.is_dir():
             raise HTTPException(422, "pick a folder with photos")
+        made = book_folders(library).get(_folder_key(folder))
+        if made and not body.get("again"):  # the same folder again: open that book (a second one on request)
+            raise HTTPException(409, {"book": made, "message": f"{folder} already has a book: {made}"})
         base = BAD_NAME.sub("", str(body.get("name") or folder.name)).strip(" .") or "book"
         name, k = base, 2
         existing = list_books(library)
@@ -681,6 +716,61 @@ def create_app(library: Path, token: str, *, ai_factory: Callable | None = None,
             find_focus(ai_for(work, brief.effort if brief else "high"), work, todo, batch=False)
         except Exception:  # noqa: BLE001 - the layout goes on with centred photos
             pass
+
+    @app.post("/api/books/{name}/titles")
+    def suggest_titles(name: str, body: dict = Body(default={}), _=Depends(auth)):
+        """Other titles to choose from, in a tone of your choice: for the book and every chapter, or for
+        one chapter. Nothing is changed; the page applies what you pick as a normal plan change."""
+        from collections import Counter
+
+        from autobook.ai.titles import book_title, chapter_titles
+        from autobook.brief.questions import ALLOWED
+        from autobook.cluster.folders import chapter_folder, clean_label, folder_hints
+        from autobook.pipeline.select import title_inputs
+
+        work = book(name)
+        if not work.plan.exists():
+            raise HTTPException(404, "no book plan yet")
+        if not ai_ready():
+            raise HTTPException(422, "no OpenAI key")
+        brief = _brief(work)
+        tone = str(body.get("tone") or (brief.title_tone if brief else "warm"))
+        if tone not in ALLOWED["title_tone"]:
+            raise HTTPException(422, f"unknown tone {tone!r}")
+        subtitles, fresh, only = bool(body.get("subtitles", True)), int(body.get("fresh") or 0), body.get("chapter")
+
+        def make(progress):
+            plan = BookPlan.load(work.plan)
+            chs = [c for c in plan.chapters if not only or c.id == only]
+            if not chs:
+                raise ValueError(f"unknown chapter {only!r}")
+            cat = Catalog(work.catalog)
+            try:
+                roots = cat.kv_get("roots", [])
+            finally:
+                cat.close()
+            ai = ai_for(work, brief.effort if brief else "high")
+            progress("titles", 0, 2 if not only else 1)
+            others = [c.title for c in plan.chapters if only and c.id != only]
+            chapters = chapter_titles(ai, work, title_inputs(chs, roots), language=plan.book.language, tone=tone,
+                                      subtitles=subtitles, variants=3, fresh=fresh, others=others or None)
+            book_opts = []
+            if not only:
+                progress("titles", 1, 2)
+                covers = plan.book.cover_candidates or ([plan.book.cover_photo] if plan.book.cover_photo else [])
+                book_opts = book_title(ai, work, [c.model_dump() for c in plan.chapters], covers,
+                                       language=plan.book.language, tone=tone, date_from=plan.book.date_from,
+                                       date_to=plan.book.date_to, subtitles=subtitles, variants=3, fresh=fresh,
+                                       folders=folder_hints([ph.path for c in plan.chapters for ph in c.photos],
+                                                            roots)) or []
+            folders = {}  # chapters by folder: the folder's name is always one of the choices
+            if brief and brief.chaptering == "folder":
+                for c in chs:
+                    top = Counter(chapter_folder(ph.path, roots) for ph in c.photos).most_common(1)
+                    if top and top[0][0]:
+                        folders[c.id] = clean_label(top[0][0]) or top[0][0]
+            return {"tone": tone, "subtitles": subtitles, "book": book_opts, "chapters": chapters, "folders": folders}
+        return start_job(make, name, "titles")
 
     @app.post("/api/books/{name}/release")
     def do_release(name: str, _=Depends(auth)):

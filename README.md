@@ -43,18 +43,22 @@ It speaks German and English (switch at the top right; a new language is one mor
 - **My books**: every book in your library (`~/autobook`, or `--library DIR` / `AUTOBOOK_LIBRARY`) as a cover,
   with its state in words ("Ready to print", "Step 3 of 5").
 1. **Photos**: pick the folder from tiles with preview photos, dates and a favourites marker; autobook looks
-   at the photos (dates, places, sharpness, near-identical shots, your favourite marks).
+   at the photos (dates, places, sharpness, near-identical shots, your favourite marks). A folder that
+   already has a book says so and opens that book; a second book from it is one click away. The start
+   page's shelf can be searched and filtered by state and year, and sorted by last edit, trip date or name.
 2. **Wishes**: what was found, then the questions as large cards (favourites, book shape, how thick, chapters,
    focus, title tone, language). The book's language is suggested from your folder names. More settings
    (photos per page, subtitles, AI on/off and thoroughness) are folded away. *Make my book* shows the AI's
    time and cost first; the run can be left and picked up again. If you sorted the photos into folders
    ("01 Anreise", "02 Strand" …), *Nach deinen Ordnern* is preselected: one chapter per folder directly
    inside the chosen folder, named after it, in the folders' order when they are numbered or dated
-   (else by date). Favourite and camera folders inside them don't count as chapters.
+   (else by date). Favourite and camera folders inside them don't count as chapters. With AI they get
+   titles of their own, the folder name being the strongest hint (and always one of the choices later).
 3. **Selection**: the chosen photos per chapter in their own shape. Click one to see it large (← →, Esc) and
    make it bigger, use it as chapter photo or cover, move it, take it out, or swap it for another shot of
-   the same moment. Titles and subtitles (of the book and each chapter) change by clicking them; the
-   cover is chosen from candidates. Everything is saved
+   the same moment. Titles and subtitles (of the book and each chapter) change by clicking them, or
+   *Titel neu vorschlagen* (with AI) offers three new ones each in a tone of your choice (plain, warm,
+   playful, poetic) – for the whole book or one chapter – and you pick; the cover is chosen from candidates. Everything is saved
    by itself, and every change can be undone.
    - **Fotos im Buch**: one slider for the whole book. While you drag, you see which photos would leave
      (dimmed) and which would come in ("neu"), with the page count; letting go applies it. Ticks mark counts

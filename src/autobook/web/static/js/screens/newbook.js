@@ -46,13 +46,14 @@ async function render(path) {
     el("span", { class: "muted" }, t("new.youAreIn")),
     el("span", { class: "loc-chip" }, icon("folder", 20, { width: 1.8 }), fs.label || fs.name),
     here ? el("button", { class: "btn ghost", onclick: () => pick({ path: fs.path, label: fs.label || fs.name, photos: here,
-      date_from: null }) }, t("new.takeThis")) : null);
+      date_from: null, book: fs.book }) }, t("new.takeThis")) : null);
 
   const tiles = fs.dirs.map(tile);
   const grid = tiles.length ? el("div", { class: "folder-grid" }, tiles)
     : el("p", { class: "empty-note" }, fs.photos_here ? t("new.onlyPhotosHere") : t("new.emptyFolder"));
   const bar = el("div", { id: "pick-bar" });
   show(el("div", { class: "page" }, head, loc, grid, bar));
+  window.scrollTo(0, 0);  // a folder just opened: start at its top, not where the last one was scrolled to
   drawBar();
 
   function tile(d) {
@@ -72,6 +73,7 @@ async function render(path) {
       el("span", { class: "muted small" }, meta),
       d.favourites ? el("span", { class: "pill gold" }, icon("star", 15, { fill: "var(--gold)", color: "var(--gold)", width: 1.5 }),
         t("new.withFavourites")) : null,
+      d.book ? el("span", { class: "pill accent" }, icon("book", 15, { width: 1.8 }), t("new.isBook", { name: d.book })) : null,
       picked ? el("span", { class: "picked-mark" }, icon("check", 20, { color: "#fff", width: 3 })) : null),
       d.subfolders ? el("button", { class: "btn small ghost open-btn", onclick: () => render(d.path) },
         t("new.open"), icon("right", 18)) : null);
@@ -91,6 +93,17 @@ async function render(path) {
       bar.replaceChildren();
       return;
     }
+    if (selected.book && !selected.again) {  // this folder already has a book: open it (a second one on request)
+      bar.replaceChildren(el("div", { class: "action-bar" },
+        el("div", { class: "grow col" },
+          el("span", { class: "muted small" }, t("new.selected")),
+          el("span", { class: "serif h3" }, selected.label),
+          el("span", { class: "muted small" }, t("new.alreadyBook", { name: selected.book }), " ",
+            el("button", { class: "link", onclick: () => { selected.again = true; drawBar(); } }, t("new.secondBook")))),
+        el("a", { class: "btn primary big", href: bookUrl(selected.book, "selection"), onclick: () => remember("") },
+          t("new.openBook", { name: selected.book }), icon("next", 22))));
+      return;
+    }
     const name = el("input", { type: "text", value: selected.label, maxlength: "80", "aria-label": t("new.bookName") });
     const go = el("button", { class: "btn primary big", onclick: () => create(name.value.trim() || selected.label) },
       t("new.go"), icon("next", 22));
@@ -107,8 +120,13 @@ async function render(path) {
   async function create(name) {
     let res;
     try {
-      res = await api("POST", "/api/books", { folder: selected.path, name });
+      res = await api("POST", "/api/books", { folder: selected.path, name, again: !!selected.again });
     } catch (e) {
+      if (e.status === 409 && e.data && e.data.book) {  // found out only now (e.g. picked in another tab)
+        selected.book = e.data.book;
+        drawBar();
+        return;
+      }
       bar.replaceChildren(el("p", { class: "error" }, t("new.failed", { msg: e.message })));
       return;
     }

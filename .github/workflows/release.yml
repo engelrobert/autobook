@@ -115,9 +115,12 @@ jobs:
         run: |
           dotnet tool install -g vpk --version $env:VPK_VERSION
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          # the latest published release, so the installed apps get a small delta update
-          vpk download github --repoUrl "https://github.com/${{ github.repository }}" --token $env:GH_TOKEN --outputDir releases
-          if ($LASTEXITCODE) { Write-Host "no earlier release to build a delta from" }
+          # the latest published release, so the installed apps get a small delta update (release builds only:
+          # a test build may carry a version that is released already, and vpk refuses to pack that again)
+          if ("${{ github.ref_type }}" -eq "tag") {
+            vpk download github --repoUrl "https://github.com/${{ github.repository }}" --token $env:GH_TOKEN --outputDir releases
+            if ($LASTEXITCODE) { Write-Host "no earlier release to build a delta from" }
+          }
           # win-x64: Python and fotobuch.exe are 64-bit (vpk would assume x86)
           vpk pack --packId autobook --packVersion $env:VERSION --packDir dist/autobook --mainExe autobook.exe `
             --packTitle autobook --icon packaging/windows/autobook.ico --runtime win-x64 --outputDir releases

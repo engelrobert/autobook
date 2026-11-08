@@ -521,6 +521,18 @@ button.lb-sib:hover { border-color: #fff; }
   background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; font: 600 22px var(--serif); }
 .how strong { font-size: 18px; }
 .q > .seg { align-self: flex-start; }
+.shelf-tools { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: center; margin: 0 0 22px; }
+.shelf-search { min-height: 44px; width: min(320px, 100%); padding: 0 14px; border: 1px solid var(--line-strong);
+  border-radius: 12px; background: var(--white); color: var(--ink); font: 500 16px var(--sans); }
+.shelf-none { grid-column: 1 / -1; }
+.suggest-btn { align-self: flex-start; }
+.wide-modal { width: min(720px, 100%); }
+.title-picks { gap: 18px; }
+.title-item { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; border: 0; }
+.title-choice { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line);
+  border-radius: 12px; cursor: pointer; }
+.title-choice.on { border-color: var(--accent); background: var(--accent-tint); }
+.title-choice input { margin-top: 4px; }
 .cover-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
 .num-input { min-height: 48px; width: 100%; max-width: 220px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 12px;
   background: var(--white); color: var(--ink); font: 500 17px var(--sans); }
