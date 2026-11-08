@@ -191,3 +191,23 @@ def test_a_failed_update_check_says_so(monkeypatch):
     assert tray.notes == ["Die Suche nach Updates hat nicht geklappt: OSError: feed not reachable"]
     ok = Updater(manager=FakeManager("9.9.9")).check()  # a later good check clears the error
     assert ok["checked"] and ok["available"] and ok["error"] is None and ok["version"] == "9.9.9"
+
+
+def test_the_feed_ends_with_a_slash_and_failures_set_the_exit_code(monkeypatch, capsys):
+    """0.2.1 and 0.2.2 asked GitHub for .../latest/releases.win.json (404): Velopack joins the file
+    name onto the feed like a URL. And `autobook update-check` exited 0 even when the check failed."""
+    import sys
+
+    import pytest
+
+    import autobook.update as upd
+    from autobook import cli
+
+    monkeypatch.setitem(sys.modules, "autobook._build",
+                        SimpleNamespace(UPDATE_FEED="https://github.com/x/autobook/releases/latest/download"))
+    assert upd.feed_url() == "https://github.com/x/autobook/releases/latest/download/"
+    monkeypatch.setattr(upd.Updater, "check", lambda self: {"error": "RuntimeError: Http error: 404"})
+    monkeypatch.setattr(sys, "argv", ["autobook", "update-check"])
+    with pytest.raises(SystemExit) as e:
+        cli.main()
+    assert e.value.code == 1 and "404" in capsys.readouterr().out

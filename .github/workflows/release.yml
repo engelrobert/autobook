@@ -49,7 +49,7 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $true  # a failing program stops the step
           # where the installed app looks for updates
           Set-Content -Encoding utf8 src/autobook/_build.py `
-            "UPDATE_FEED = `"https://github.com/${{ github.repository }}/releases/latest/download`""
+            "UPDATE_FEED = `"https://github.com/${{ github.repository }}/releases/latest/download/`""
           uv run --python 3.12 --frozen python packaging/windows/make_icon.py
           uv run --python 3.12 --frozen --with pyinstaller pyinstaller --noconfirm --distpath dist --workpath build packaging/windows/autobook.spec
           Copy-Item -Recurse "$env:RUNNER_TEMP\fotobuch" dist/autobook/fotobuch

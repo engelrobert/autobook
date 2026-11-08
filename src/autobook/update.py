@@ -27,7 +27,9 @@ def feed_url() -> str | None:
         from autobook._build import UPDATE_FEED  # type: ignore[import-not-found]
     except ImportError:
         return None
-    return UPDATE_FEED or None
+    # with a trailing slash: Velopack joins the file name onto it like a URL, and without one
+    # ".../latest/download" + "releases.win.json" becomes ".../latest/releases.win.json" (404)
+    return UPDATE_FEED.rstrip("/") + "/" if UPDATE_FEED else None
 
 
 def _get(obj, *names):

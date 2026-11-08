@@ -435,7 +435,9 @@ def main() -> None:
     from autobook.export.fotobuch import ExportConflict, FotobuchError
 
     try:
-        app(standalone_mode=False)
+        code = app(standalone_mode=False)  # click returns an Exit's code here instead of raising it
+        if isinstance(code, int) and code:
+            sys.exit(code)
     except (FotobuchError, ExportConflict, BudgetExceeded, FileNotFoundError) as e:
         typer.echo(f"error: {e}", err=True)
         sys.exit(2)
