@@ -56,7 +56,10 @@ class Updater:
             try:
                 import velopack
 
-                self._manager = velopack.UpdateManager(feed_url())
+                # explicitly a plain web source: given a bare github.com address, Velopack takes it for a
+                # repository and asks the GitHub API for ".../releases/latest/download" (404, 0.2.1–0.2.2)
+                source = velopack.HttpSource(feed_url()) if hasattr(velopack, "HttpSource") else feed_url()
+                self._manager = velopack.UpdateManager(source)
             except Exception as e:  # e.g. run from a build folder, not installed by Velopack
                 log.warning("updates off: %s: %s", type(e).__name__, e, exc_info=True)
                 self._status["error"] = f"{type(e).__name__}: {e}"
