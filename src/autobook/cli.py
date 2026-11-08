@@ -364,6 +364,10 @@ def install_shortcut():
 @app.command("update-check")
 def update_check():
     """Look for a new version of the installed Windows app; prints the result (an error included)."""
+    import logging
+
+    # Velopack reports through Python logging (which feed address, which channel): show it
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     from autobook.update import Updater
 
     st = Updater().check()
