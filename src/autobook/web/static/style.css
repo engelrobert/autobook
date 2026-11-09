@@ -330,7 +330,27 @@ input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--accent); }
 .opener:hover { border-color: var(--accent); }
 .opener img { width: 150px; height: 100px; object-fit: cover; border-radius: 10px; }
 .opener-none { max-width: 260px; }
-@media (max-width: 900px) { .ch-nav { display: none; } }
+/* chapters in your own order: arrows in the chapter head, a handle to drag them in the list */
+.ch-title-row { align-items: center; flex-wrap: nowrap; }
+.ch-title-row .editable { min-width: 0; overflow-wrap: anywhere; }
+.ch-order { display: inline-flex; gap: 0; flex: 0 0 auto; }
+.ch-order .icon-btn:disabled { opacity: .3; cursor: default; }
+.chapter.flash { outline: 4px solid var(--accent); outline-offset: 3px; }
+.nav-list { gap: 2px; }
+.nav-item { display: flex; align-items: center; gap: 2px; border-radius: 12px; position: relative; }
+.nav-item a { flex: 1 1 auto; min-width: 0; padding-left: 4px; }
+.nav-grip { flex: 0 0 28px; height: 46px; display: grid; place-items: center; border: 0; background: transparent; color: var(--pencil);
+  border-radius: 8px; cursor: grab; touch-action: none; padding: 0; }
+.nav-grip:hover, .nav-grip:focus-visible { background: var(--accent-tint); color: var(--ink); }
+.nav-item.dragging { opacity: .45; }
+.nav-item.dragging .nav-grip { cursor: grabbing; }
+.nav-item.drop-before::before, .nav-item.drop-after::after { content: ""; position: absolute; left: 6px; right: 6px; height: 3px;
+  border-radius: 2px; background: var(--accent); }
+.nav-item.drop-before::before { top: -2px; }
+.nav-item.drop-after::after { bottom: -2px; }
+.by-date { font-size: 14px; padding: 6px 10px; }
+.narrow-only { display: none; align-self: flex-start; padding-left: 0; }
+@media (max-width: 900px) { .ch-nav { display: none; } .narrow-only { display: inline; } }
 
 /* justified rows: every photo keeps its shape and all photos of a row get the same height */
 .jgrid { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }

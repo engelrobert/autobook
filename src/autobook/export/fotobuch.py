@@ -675,7 +675,7 @@ def _update(plan, work, profile, fb, project_dir, progress, guides: bool | None 
     if not work.manifest.exists():
         raise ExportConflict("project exists but export_manifest.json is missing; use --fresh")
     old = json.loads(work.manifest.read_text(encoding="utf-8"))
-    if [c["id"] for c in old["chapters"]] != [c.id for c in plan.chapters]:
+    if {c["id"] for c in old["chapters"]} != {c.id for c in plan.chapters}:  # a new order alone is fine
         raise ExportConflict("the chapter structure changed; re-export with --fresh "
                              "(manual layout edits in Fotobuch will be lost)")
     if old.get("profile") != profile.name and not _same_pages(old.get("profile", ""), profile):
@@ -742,7 +742,8 @@ def _update(plan, work, profile, fb, project_dir, progress, guides: bool | None 
         for g in sorted({g for _, g in added}):
             fb.run(["add", work.staging / g], project_dir)
         data = load_state(project_dir)
-        apply_order_and_weights(data, {}, {v["fid"]: v["weight"] for v in photos.values()})
+        # chapters moved by hand: the groups follow the plan's order (the pages are laid out in it anyway)
+        apply_order_and_weights(data, _sort_keys(plan, groups), {v["fid"]: v["weight"] for v in photos.values()})
         _gen_group_sort_key(data)
         save_state(project_dir, data)
         # place each new photo onto the nearest page of its own chapter (placing into a page
@@ -763,6 +764,7 @@ def _update(plan, work, profile, fb, project_dir, progress, guides: bool | None 
         fb.run(["add", "--update", work.staging / GEN_GROUP], project_dir)
         pages, pdf, blank = _finish(plan, work, profile, fb, project_dir, gen, cat, warnings, photos)
         old["photos"] = photos
+        old["chapters"] = [{"id": ch.id, "group": groups[ch.id]} for ch in plan.chapters]
         old["project_sha"] = project_sha(project_dir)
         work.manifest.write_text(json.dumps(old, indent=2, ensure_ascii=False), encoding="utf-8")
         warnings.insert(0, f"update: {len(added)} added, {len(removed)} removed")

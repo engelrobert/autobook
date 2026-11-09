@@ -227,6 +227,23 @@ export function setLayout(plan, id, layout) {
   if (p) p.layout = layout;
 }
 
+// Chapters in your own order: move one to index `to` (clamped), or put them back in date order
+export function moveChapter(plan, cid, to) {
+  const from = plan.chapters.findIndex(c => c.id === cid);
+  if (from < 0) return;
+  const [c] = plan.chapters.splice(from, 1);
+  plan.chapters.splice(Math.max(0, Math.min(plan.chapters.length, to)), 0, c);
+}
+
+const byDates = (a, b) => (a.date_from < b.date_from ? -1 : a.date_from > b.date_from ? 1
+  : a.date_to < b.date_to ? -1 : a.date_to > b.date_to ? 1 : 0);
+
+export function byDate(plan) {
+  plan.chapters = plan.chapters.map((c, i) => [c, i]).sort(([a, i], [b, j]) => byDates(a, b) || i - j).map(([c]) => c);
+}
+
+export const inDateOrder = plan => plan.chapters.every((c, i) => i === 0 || byDates(plan.chapters[i - 1], c) <= 0);
+
 export function photoCount(plan) {
   return plan.chapters.reduce((n, c) => n + c.photos.length + (c.divider.photo ? 1 : 0), 0)
     + (plan.book.cover_photo ? 1 : 0);

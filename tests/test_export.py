@@ -164,6 +164,39 @@ def test_export_release_update_and_fix(work_copy, monkeypatch):
     assert load_state(r5.project_dir)["config"]["preview"]["show_borders"] is True  # guides kept
 
 
+@requires_fotobuch
+@pytest.mark.fotobuch
+def test_chapters_moved_by_hand_are_an_update_not_a_conflict(work_copy):
+    from autobook.export.fotobuch import ExportConflict
+
+    plan = build_plan(work_copy, Brief(target_photos=30, language="de"), profile="square-21")
+    assert len(plan.chapters) >= 3
+    export(plan, work_copy, fresh=True)
+    a = plan.chapters[0]
+    ids = [p.id for p in a.photos]
+    assert len(ids) >= 3
+    split = [ids[:1], ids[1:3], *([ids[3:]] if ids[3:] else [])]  # pages split by hand travel along
+    a.pages = split
+    plan.chapters = plan.chapters[1:] + [a]  # the first chapter goes to the end
+    r = export(plan, work_copy)
+    assert r.mode == "update"
+
+    m = json.loads(work_copy.manifest.read_text())
+    assert [c["id"] for c in m["chapters"]] == [c.id for c in plan.chapters]
+    lay = load_state(r.project_dir)["layout"]
+    first = lambda pid: next(i for i, p in enumerate(lay) if pid in {str(x) for x in p["photos"]})  # noqa: E731
+    divs = [first(f"{GEN_GROUP}/ab_div_{c.id}.jpg") for c in plan.chapters]
+    assert divs == sorted(divs)  # the chapter pages in the new order
+    fid = {k: v["fid"] for k, v in m["photos"].items()}
+    pages = [[fid[i] for i in pg] for pg in split[:2]]
+    assert all(any({str(x) for x in p["photos"]} == set(pg) for p in lay) for pg in pages)
+    assert divs[-1] < first(pages[0][0]) < first(pages[1][0])
+
+    plan.chapters = plan.chapters[:-1]  # a chapter less: that still needs a new layout
+    with pytest.raises(ExportConflict):
+        export(plan, work_copy)
+
+
 
 def test_too_few_photos_are_padded_to_the_printers_minimum(work_copy):
     plan = build_plan(work_copy, Brief(target_photos=8), profile="square-21")

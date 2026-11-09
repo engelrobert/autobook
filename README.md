@@ -60,6 +60,9 @@ It speaks German and English (switch at the top right; a new language is one mor
    *Titel neu vorschlagen* (with AI) offers three new ones each in a tone of your choice (plain, warm,
    playful, poetic) – for the whole book or one chapter – and you pick; the cover is chosen from candidates. Everything is saved
    by itself, and every change can be undone.
+   - **Chapter order**: ↑ / ↓ next to a chapter title move it, or drag it by its handle in the chapter list
+     (arrow keys on the handle work too). *Nach Datum sortieren* puts them back in date order. The book is laid
+     out in your order, and pages you arranged by hand move along with their chapter.
    - **Fotos im Buch**: one slider for the whole book. While you drag, you see which photos would leave
      (dimmed) and which would come in ("neu"), with the page count; letting go applies it. Ticks mark counts
      that fill whole pages the printer takes, and letting go close to one snaps to it. − / + next to a

@@ -1,7 +1,7 @@
 [project]
 name = "autobook"
 license = "AGPL-3.0-or-later"
-version = "0.2.3"
+version = "0.2.4"
 description = "AI-assisted photo book builder on top of Fotobuch"
 readme = "README.md"
 requires-python = ">=3.12"

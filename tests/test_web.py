@@ -194,6 +194,15 @@ def test_layout_and_page_previews(tmp_path, work_copy):
     assert c.post(f"/api/books/{name}/plan", json=plan, headers=H).status_code == 200
     st = c.get(f"/api/books/{name}/state", headers=H).json()
     assert st["layout_outdated"] and st["print_outdated"] and st["info"]["state"] == "exported"
+    # chapters moved in the overview: saved in that order, and laid out again without a conflict
+    plan["chapters"] = plan["chapters"][::-1]
+    order = [ch["id"] for ch in plan["chapters"]]
+    assert c.post(f"/api/books/{name}/plan", json=plan, headers=H).status_code == 200
+    assert [ch["id"] for ch in c.get(f"/api/books/{name}/state", headers=H).json()["plan"]["chapters"]] == order
+    r = _wait(c, c.post(f"/api/books/{name}/export", json={}, headers=H))
+    assert r["ok"] and r["mode"] == "update", r
+    openers = [p["chapter"] for p in c.get(f"/api/books/{name}/pages", headers=H).json()["pages"] if p["kind"] == "opener"]
+    assert openers == order
 
 
 

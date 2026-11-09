@@ -99,7 +99,8 @@ function draw(B) {
           t("sel.editBookSubtitle"), { allowEmpty: true, placeholder: t("sel.addSubtitle"), cls: "subtitle" }),
         el("button", { class: "btn small ghost suggest-btn", onclick: () => titlesDialog(B) }, icon("star", 18),
           t("titles.button")),
-        el("span", { class: "muted" }, t("sel.stats", { n: total, c: t("sel.chapterCount", { n: plan.chapters.length }), p: pages }))),
+        el("span", { class: "muted" }, t("sel.stats", { n: total, c: t("sel.chapterCount", { n: plan.chapters.length }), p: pages })),
+        byDateButton(B, "narrow-only")),
       el("div", { class: "row" }, statusEl,
         el("a", { class: "btn primary big", href: bookUrl(B.name, "book") }, t("sel.next"), icon("next", 22)))),
     countSlider(B, { onPreview: r => preview(B, r) }),
@@ -108,7 +109,7 @@ function draw(B) {
     coverCard(B),
     el("div", { class: "sel-body" },
       chapterNav(B),
-      el("div", { class: "chapters" }, plan.chapters.map(c => chapterSection(B, c))))));
+      el("div", { class: "chapters" }, plan.chapters.map((c, i) => chapterSection(B, c, i))))));
   window.scrollTo(0, scrollY);
 }
 
@@ -131,28 +132,106 @@ function chapterDates(c) {
   return c.date_from === c.date_to ? weekday(c.date_from) : dateRange(c.date_from, c.date_to, { day: "numeric", month: "long", year: "numeric" });
 }
 
+// ── chapters in your own order ──────────────────────────────────────────
+// Move a chapter to index `to`; afterwards it is scrolled into view and flashes, like a found photo.
+function moveChapter(B, cid, to) {
+  const from = B.plan.chapters.findIndex(c => c.id === cid);
+  if (from < 0 || to === from || to < 0 || to >= B.plan.chapters.length) return;
+  P.change(t("done.chapterMoved"), p => P.moveChapter(p, cid, to));
+  const sec = document.getElementById(`ch-${cid}`);
+  if (!sec) return;
+  sec.scrollIntoView({ block: "start" });
+  sec.classList.add("flash");
+  setTimeout(() => sec.classList.remove("flash"), 2000);
+}
+
+// "Nach Datum sortieren", once the chapters are moved (not for chapters by folder: their order is the folders')
+function byDateButton(B, cls = "") {
+  const folders = B.brief && B.brief.chaptering === "folder";
+  if (folders || P.inDateOrder(B.plan)) return null;
+  return el("button", { class: `link by-date ${cls}`, onclick: () => P.change(t("done.byDate"), p => P.byDate(p)) },
+    t("sel.byDate"));
+}
+
 function chapterNav(B) {
-  return el("nav", { class: "ch-nav card", "aria-label": t("sel.chapters") },
-    el("span", { class: "label" }, t("sel.chapters")),
-    B.plan.chapters.map(c => {
-      const thumbId = c.divider.photo || c.photos[0]?.id;
-      return el("a", { href: `#ch-${c.id}`, onclick: e => {
+  const list = el("div", { class: "col nav-list" });
+  B.plan.chapters.forEach((c, i) => {
+    const thumbId = c.divider.photo || c.photos[0]?.id;
+    const grip = el("button", { class: "nav-grip", "aria-label": t("sel.dragChapter", { name: c.title }),
+      title: t("sel.dragChapter", { name: c.title }), onkeydown: e => {
+        if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+          e.preventDefault();
+          moveChapter(B, c.id, i + (e.key === "ArrowUp" ? -1 : 1));
+          document.querySelector(`.nav-item[data-id="${c.id}"] .nav-grip`)?.focus();
+        }
+      } }, icon("grip", 18, { width: 2.6 }));
+    const item = el("div", { class: "nav-item", "data-id": c.id }, grip,
+      el("a", { href: `#ch-${c.id}`, onclick: e => {
         e.preventDefault();
         document.getElementById(`ch-${c.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
       } }, thumbId ? img(B, thumbId, { sizes: "48px" }) : el("span", { class: "nav-empty" }),
       el("span", { class: "col" }, el("span", { class: "nav-title" }, c.title),
-        el("span", { class: "muted small" }, `${shortDay(c.date_from)} · ${t("sel.photos", { n: c.photos.length })}`)));
-    }));
+        el("span", { class: "muted small" }, `${shortDay(c.date_from)} · ${t("sel.photos", { n: c.photos.length })}`))));
+    dragChapter(B, list, item, grip, c.id);
+    list.append(item);
+  });
+  return el("nav", { class: "ch-nav card", "aria-label": t("sel.chapters") },
+    el("div", { class: "row between" }, el("span", { class: "label" }, t("sel.chapters")), byDateButton(B)),
+    list);
 }
 
-function chapterSection(B, c) {
+// Drag a chapter by its handle to another place in the list (mouse, finger or pen); a line shows where it lands.
+function dragChapter(B, list, item, grip, cid) {
+  let start = null, dragging = false;
+  const items = () => [...list.querySelectorAll(".nav-item")];
+  const target = y => {  // the index the chapter would get: before the first item whose middle is below y
+    const others = items().filter(x => x !== item);
+    const k = others.findIndex(x => { const r = x.getBoundingClientRect(); return y < r.top + r.height / 2; });
+    return { others, k: k < 0 ? others.length : k };
+  };
+  const clear = () => list.querySelectorAll(".drop-before, .drop-after").forEach(x => x.classList.remove("drop-before", "drop-after"));
+  grip.addEventListener("pointerdown", e => { start = { y: e.clientY, id: e.pointerId }; });
+  grip.addEventListener("pointermove", e => {
+    if (!start) return;
+    if (!dragging && Math.abs(e.clientY - start.y) > 6) {
+      dragging = true;
+      try { grip.setPointerCapture(start.id); } catch { /* the drag still works without it */ }
+      item.classList.add("dragging");
+    }
+    if (!dragging) return;
+    clear();
+    const { others, k } = target(e.clientY);
+    if (k < others.length) others[k].classList.add("drop-before");
+    else if (others.length) others[others.length - 1].classList.add("drop-after");
+  });
+  const end = e => {
+    if (dragging) {
+      clear();
+      item.classList.remove("dragging");
+      moveChapter(B, cid, target(e.clientY).k);
+    }
+    start = null;
+    dragging = false;
+  };
+  grip.addEventListener("pointerup", end);
+  grip.addEventListener("pointercancel", () => { clear(); item.classList.remove("dragging"); start = null; dragging = false; });
+}
+
+function chapterSection(B, c, i) {
   const opener = c.divider.photo;
   const ids = c.photos.map(p => p.id);
   const open = id => openLightbox(B, { ids, index: ids.indexOf(id), mode: "book", chapter: c.id });
+  const last = B.plan.chapters.length - 1;
   return el("section", { class: "card chapter", id: `ch-${c.id}` },
     el("div", { class: "ch-head" },
       el("div", { class: "col" },
-        editable(c.title, v => P.change(t("done.title"), p => { P.chapterById(p, c.id).title = v; }), "h2", t("sel.editChapter")),
+        el("div", { class: "row tight ch-title-row" },
+          editable(c.title, v => P.change(t("done.title"), p => { P.chapterById(p, c.id).title = v; }), "h2", t("sel.editChapter")),
+          last > 0 ? el("span", { class: "ch-order", role: "group", "aria-label": t("sel.chapterOrder") },
+            el("button", { class: "icon-btn quiet", disabled: i === 0, title: t("sel.chapterUp"), "aria-label": t("sel.chapterUp"),
+              onclick: () => moveChapter(B, c.id, i - 1) }, icon("up", 20, { width: 2.2 })),
+            el("button", { class: "icon-btn quiet", disabled: i === last, title: t("sel.chapterDown"), "aria-label": t("sel.chapterDown"),
+              onclick: () => moveChapter(B, c.id, i + 1) }, icon("down", 20, { width: 2.2 }))) : null),
         el("div", { class: "row tight" },
           editable(c.subtitle, v => P.change(t("done.subtitle"), p => { P.chapterById(p, c.id).subtitle = v; }), "p",
             t("sel.editSubtitle"), { allowEmpty: true, placeholder: t("sel.addSubtitle"), cls: "subtitle" }),
